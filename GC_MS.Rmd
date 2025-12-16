@@ -3,12 +3,12 @@ title: "el_bias"
 author: "Sophie Yam"
 date: "`r Sys.Date()`"
 output:
+  github_document:
+    html_preview: false
   pdf_document:
     number_sections: true
     toc: true
     toc_depth: 2
-  github_document:
-    html_preview: false
 fontsize: 11pt
 editor_options: 
   markdown: 
