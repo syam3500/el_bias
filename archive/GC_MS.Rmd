@@ -166,7 +166,7 @@ AET <- 5
 
 ```{r}
 set.seed(123)
-base_concentrations1 <- runif(50, min = 0.5 * AET, max = 2 * AET)
+base_concentrations1 <- runif(100, min = 0.5 * AET, max = 2 * AET)
 hist(base_concentrations1)
 ```
 
@@ -179,7 +179,7 @@ $width/6 = 11.51/6=1.91$
 
 ```{r}
 set.seed(123)
-base_concentrations2 <- rlnorm(50, meanlog = -1.15, sdlog = 1.91)
+base_concentrations2 <- rlnorm(100, meanlog = -1.15, sdlog = 1.91)
 hist(base_concentrations2)
 ```
 
@@ -227,7 +227,11 @@ summary_table <- data.frame(
   FN_Rate = numeric(),
   FP_Rate = numeric(),
   FN_SD = numeric(),
-  FP_SD = numeric()
+  FP_SD = numeric(),
+  CI_FN_Lower = numeric(),
+  CI_FN_Upper = numeric(),
+  CI_FP_Lower = numeric(),
+  CI_FP_Upper = numeric()
 )
 ```
 
@@ -237,27 +241,36 @@ Uniform concentration around the AET \\
 Non Parametric Bootstrap with replacement of the GC/MS dataset \\
 No UF correction
 
+Update 02 Jan 2026: add for loop and change the replace to FALSEca
+
 ```{r}
 set.seed(123)
 N_sim <- 10000
-
+N_extractables <- 80
+for (i in 1:N_sim) {
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_sim, replace = TRUE)
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_sim, replace = TRUE)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## alpha) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
 FN <- (base_conc_sim > AET) & (corrected_conc < AET)
-FP <- (base_conc_sim< AET) & (corrected_conc > AET)
+FP <- (base_conc_sim < AET) & (corrected_conc > AET)
+}
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "No Correction",
-  FN_Rate = mean(FN) * 100,
-  FP_Rate = mean(FP) * 100,
-  FN_SD = (sd(FN)/sqrt(N_sim))*100,
-  FP_SD = (sd(FP)/sqrt(N_sim))*100
+  FN_Rate = sum(FN)/N_sim,
+  FP_Rate = sum(FP)/N_sim,
+  FN_SD = sqrt(FN_Rate*(1-FN_Rate)/N_sim),
+  FP_SD = sqrt(FP_Rate*(1-FP_Rate)/N_sim),
+  CI_FN_Lower = FN_Rate - 1.96*FN_SD,
+  CI_FN_Lower = FN_Rate + 1.96*FN_SD,
+  CI_FP_Lower = FN_Rate - 1.96*FP_SD,
+  CI_FP_Lower = FN_Rate + 1.96*FP_SD,
 ))
+
 
 ```
 
@@ -287,11 +300,14 @@ set.seed(123)
 N_sim <- 10000
 UF_RSD <- 1/(1-rsd(simulated_RRF)) # formula from ISO 10993-18
 UF <- c(2, 4, 5, 10, UF_RSD)
+N_extractables <- 80
 
+
+for (i in 1:N_sim) {
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_sim, replace = TRUE)
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_sim, replace = TRUE)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## beta) UF corrections
 
 results_df <- data.frame(UF = numeric(), FN_Rate = numeric(), FP_Rate = numeric())
@@ -303,16 +319,20 @@ for (uf_val in UF) {
   FP_loop <- (base_conc_sim < AET) & (corrected_conc_uf > AET)
   
   method_name <- ifelse(uf_val == UF_RSD, "UF (RSD)", paste0("UF (", round(uf_val, 1), ")"))
-
-  summary_table <- rbind(summary_table, data.frame(
-    Method = method_name,
-    FN_Rate = mean(FN_loop) * 100,
-    FP_Rate = mean(FP_loop) * 100,
-    FN_SD = (sd(FN_loop)/sqrt(N_sim))*100,
-    FP_SD = (sd(FP_loop)/sqrt(N_sim))*100
-  ))
-
 }
+}
+summary_table <- rbind(summary_table, data.frame(
+    Method = method_name,
+    FN_Rate = sum(FN)/N_sim,
+    FP_Rate = sum(FP)/N_sim,
+    FN_SD = sqrt(FN_Rate*(1-FN_Rate)/N_sim),
+    FP_SD = sqrt(FP_Rate*(1-FP_Rate)/N_sim),
+    CI_FN_Lower = FN_Rate - 1.96*FN_SD,
+    CI_FN_Lower = FN_Rate + 1.96*FN_SD,
+    CI_FP_Lower = FN_Rate - 1.96*FP_SD,
+    CI_FP_Lower = FN_Rate + 1.96*FP_SD,
+))
+
 
 
 
@@ -332,7 +352,9 @@ percentile <- function(x) {
 
 set.seed(123)
 N_sim <- 10000
+N_extractables <- 80
 
+for (i in 1:N_sim) {
 ## 1) Concentration around the AET
 base_conc_sim <- sample(base_concentrations1, size = N_sim, replace = TRUE)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
@@ -342,14 +364,21 @@ corrected_conc <- base_conc_sim * simulated_RRF /  percentile(simulated_RRF)
 
 FN <- (base_conc_sim > AET) & (corrected_conc < AET)
 FP <- (base_conc_sim < AET) & (corrected_conc > AET)
+}
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "Percentile (16th)",
-  FN_Rate = mean(FN) * 100,
-  FP_Rate = mean(FP) * 100,
-  FN_SD = (sd(FN)/sqrt(N_sim))*100,
-  FP_SD = (sd(FP)/sqrt(N_sim))*100
+  FN_Rate = sum(FN)/N_sim,
+  FP_Rate = sum(FP)/N_sim,
+  FN_SD = sqrt(FN_Rate*(1-FN_Rate)/N_sim),
+  FP_SD = sqrt(FP_Rate*(1-FP_Rate)/N_sim),
+  CI_FN_Lower = FN_Rate - 1.96*FN_SD,
+  CI_FN_Lower = FN_Rate + 1.96*FN_SD,
+  CI_FP_Lower = FN_Rate - 1.96*FP_SD,
+  CI_FP_Lower = FN_Rate + 1.96*FP_SD,
 ))
+
+
 
 ```
 
@@ -362,6 +391,9 @@ Correction by applying condition on the RRFs.
 ```{r}
 set.seed(123)
 N_sim <- 10000
+N_extractables <- 80
+
+for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
 base_conc_sim <- sample(base_concentrations1, size = N_sim, replace = TRUE)
@@ -376,14 +408,19 @@ corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition
 
 FN <- (base_conc_sim > AET) & (corrected_conc < AET)
 FP <- (base_conc_sim < AET) & (corrected_conc > AET)
-
+}
 summary_table <- rbind(summary_table, data.frame(
   Method = "RRFlow",
-  FN_Rate = mean(FN) * 100,
-  FP_Rate = mean(FP) * 100,
-  FN_SD = (sd(FN)/sqrt(N_sim))*100,
-  FP_SD = (sd(FP)/sqrt(N_sim))*100
+  FN_Rate = sum(FN)/N_sim,
+  FP_Rate = sum(FP)/N_sim,
+  FN_SD = sqrt(FN_Rate*(1-FN_Rate)/N_sim),
+  FP_SD = sqrt(FP_Rate*(1-FP_Rate)/N_sim),
+  CI_FN_Lower = FN_Rate - 1.96*FN_SD,
+  CI_FN_Lower = FN_Rate + 1.96*FN_SD,
+  CI_FP_Lower = FN_Rate - 1.96*FP_SD,
+  CI_FP_Lower = FN_Rate + 1.96*FP_SD,
 ))
+
 
 ```
 ## GC-MS Correction RRF < 1
@@ -395,6 +432,9 @@ Correction by applying condition on the RRFs.
 ```{r}
 set.seed(123)
 N_sim <- 10000
+N_extractables <- 80
+
+for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
 base_conc_sim <- sample(base_concentrations1, size = N_sim, replace = TRUE)
@@ -409,14 +449,20 @@ corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition
 
 FN <- (base_conc_sim > AET) & (corrected_conc < AET)
 FP <- (base_conc_sim < AET) & (corrected_conc > AET)
-
+}
 summary_table <- rbind(summary_table, data.frame(
   Method = "RRF<1",
-  FN_Rate = mean(FN) * 100,
-  FP_Rate = mean(FP) * 100,
-  FN_SD = (sd(FN)/sqrt(N_sim))*100,
-  FP_SD = (sd(FP)/sqrt(N_sim))*100
+  FN_Rate = sum(FN)/N_sim,
+  FP_Rate = sum(FP)/N_sim,
+  FN_SD = sqrt(FN_Rate*(1-FN_Rate)/N_sim),
+  FP_SD = sqrt(FP_Rate*(1-FP_Rate)/N_sim),
+  CI_FN_Lower = FN_Rate - 1.96*FN_SD,
+  CI_FN_Lower = FN_Rate + 1.96*FN_SD,
+  CI_FP_Lower = FN_Rate - 1.96*FP_SD,
+  CI_FP_Lower = FN_Rate + 1.96*FP_SD,
 ))
+
+
 
 
 summary_table

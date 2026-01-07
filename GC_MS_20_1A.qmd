@@ -1,0 +1,494 @@
+---
+title: "GC_MS20"
+format: gfm
+editor: visual
+---
+
+# Libraries
+
+```{r}
+Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
+#install.packages("tabulapdf")
+
+# Load required packages
+library(tidyverse)
+library(dplyr)
+library(purrr)
+library(lubridate)
+library(ggplot2)
+library(here)
+library(parallel)
+library(pdftools)
+library(stringr)
+library(rJava)
+library(tabulapdf) # for data tables extraction
+library(readxl)
+library(reticulate)
+#py_install(c("pandas", "joblib", "scikit-learn"))
+
+```
+
+# Data Extraction
+
+Data for RRFs are coming from the US FDA Clap List. <https://cdrh-rst.fda.gov/chemicals-list-analytical-performance-clap>
+
+Each file is in a pdf format and contains RRF values for 3 concentration of a surrogate. LCMS RRFs CLAP Negative Ion Detection.pdf (255.54 KB) LCMS RRFs CLAP Positive Ion Detection.pdf (279.48 KB) RRF GCMS for CLAP.pdf (322.77 KB)
+
+They are first extracted to perform the bootstrap simulation. Some data are n.d. or below DL. The current strategy is to change the n.d. to 0 and below DL to 0.001 based on the input of the Subject Matter Expert.
+
+# Extract GC/MS data
+
+Tried to extract the data directly from the pdf but it was complicated. I manually performed the extraction in Excel using PowerQuery.
+
+```{r}
+gc_ms <- extract_tables("dataset/GCMS.pdf", method="stream")
+gc_ms
+```
+
+# GC/MS data
+
+```{r}
+gcms_clap <- read_excel( 
+  path = "processed_data/GCMS.xlsx", 
+  sheet = "GC-MS")
+
+gcms_clap_clean <- gcms_clap %>%
+  na.omit()
+
+gcms_clap_clean
+
+gcms_clap_clean$"5 µg/mL" <- as.numeric(gcms_clap_clean$"5 µg/mL")
+gcms_clap_clean$"10 µg/mL" <- as.numeric(gcms_clap_clean$"10 µg/mL")
+gcms_clap_clean$"20 µg/mL" <- as.numeric(gcms_clap_clean$"20 µg/mL")
+
+hist(gcms_clap_clean$"5 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 5 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "skyblue")
+hist(gcms_clap_clean$"10 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 10 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "orange")
+hist(gcms_clap_clean$"20 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 20 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "red")
+
+
+```
+
+# LC/MS pos data
+
+```{r}
+lcmspos_clap <- read_excel( 
+  path = "processed_data/LCMS.xlsx", 
+  sheet = "LCMSPOS")
+
+lcmspos_clap_clean <- lcmspos_clap %>%
+  na.omit()
+
+
+hist(lcmspos_clap_clean$"5 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 5 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "skyblue")
+hist(lcmspos_clap_clean$"10 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 10 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "orange")
+hist(lcmspos_clap_clean$"20 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 20 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "red")
+
+```
+
+# LC/MS neg data
+
+```{r}
+lcmsneg_clap <- read_excel( 
+  path = "processed_data/LCMS.xlsx", 
+  sheet = "LCMSNEG")
+
+lcmsneg_clap_clean <- lcmsneg_clap %>%
+  na.omit()
+
+lcmsneg_clap_clean
+
+
+hist(lcmsneg_clap_clean$"5 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 5 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "skyblue")
+hist(lcmsneg_clap_clean$"10 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 10 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "orange")
+hist(lcmsneg_clap_clean$"20 µg/mL", 
+     main = "Histogram of RRFs for GC/MS with a 20 µg/mL surrogate Concentration", 
+     xlab = "RRF",
+     col = "red")
+
+```
+
+# Generate Base concentration
+
+## Define AET
+
+```{r}
+AET <- 5
+```
+
+## Uniform distribution
+
+```{r}
+set.seed(123)
+base_concentrations1 <- runif(100, min = 0.5 * AET, max = 2 * AET)
+hist(base_concentrations1)
+```
+
+## Log-Normal distribution
+
+$log(0.001) = -6.907, log(100) = 4.605$ \\ $mid (meanlog) approx -1.15$ \\ $width = 4.605 - (-6.907) = 11.51$ \\ $width/6 = 11.51/6=1.91$
+
+```{r}
+set.seed(123)
+base_concentrations2 <- rlnorm(100, meanlog = -1.15, sdlog = 1.91)
+hist(base_concentrations2)
+```
+
+## Custom distribution
+
+```{r}
+set.seed(123)
+Z <- runif(70, min = 0.001, max = 1)
+Y <- runif(20, min = 1, max = 10)
+K <- runif(10, min = 10, max = 100)
+
+custom <- c(Z, Y, K)
+
+custom_sampled <- sample(custom, size = 100, replace = FALSE)
+
+hist(custom_sampled)
+```
+
+## Normal distribution (simulating a GC/MS RRF distribution)
+
+```{r}
+set.seed(123)
+RRF_norm <- rnorm(50, 1, 0.2)
+RRF_norm[RRF_norm<0] <- 0.001 # avoiding negative numbers
+hist(RRF_norm)
+```
+
+## Log_Normal distribution (simulating a LC/MS RRF distribution)
+
+```{r}
+set.seed(123)
+RRF_lnorm <- rlnorm(50, 0, 0.5)
+RRF_lnorm[RRF_lnorm<0] <- 0.001 # avoiding negative numbers
+hist(RRF_lnorm)
+```
+
+# Scenario with uniform distribution & GC/MS data from US FDA CLAP list
+
+## Initialisation of the comparison table
+
+```{r}
+summary_table <- data.frame(
+  Method = character(),
+  FN_Rate = numeric(),
+  FP_Rate = numeric(),
+  FN_SD = numeric(),
+  FP_SD = numeric()
+)
+```
+
+## GC-MS No Correction Scenarios
+
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+total_points <- N_sim * N_extractables
+
+for (i in 1:N_sim) {
+## 1) Concentration around the AET
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (20 µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## alpha) No Correction
+corrected_conc <- base_conc_sim / simulated_RRF
+
+total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
+total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
+total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
+total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+
+}
+
+FN_Rate_final <- total_FN / total_points
+FP_Rate_final <- total_FP / total_points
+
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "No Correction",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
+  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
+
+```
+
+```{r}
+hist(base_conc_sim, 
+     main = "Histogram of Base concentration around the AET", 
+     xlab = "Concentration",
+     col = "skyblue")
+hist(simulated_RRF,
+     main = "Histogram of RRFs (non-parametric bootstrap of GC/MS dataset 10µg/mL) from FDA Clap list", 
+     xlab = "Concentration",
+     col = "grey")
+```
+
+## GC-MS Correction UF Factor
+
+## GC-MS Correction UF Factor
+
+Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ UF correction : from 2, 4, 5, 10 and UF = 1/(1-RSD)
+
+```{r}
+rsd <- function(x) {
+  return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+}
+
+set.seed(123)
+N_sim <- 10000
+UF_RSD <- 1/(1-rsd(simulated_RRF)) # formula from ISO 10993-18
+UF_list <- c(
+  "UF (2)"   = 2, 
+  "UF (4)"   = 4, 
+  "UF (5)"   = 5, 
+  "UF (10)"  = 10, 
+  "UF (RSD)" = UF_RSD
+)
+
+N_extractables <- 80
+total_points <- N_sim * N_extractables
+
+for (m_name in names(UF_list)) {
+  uf_val <- UF_list[[m_name]]
+  total_FN <- 0
+  total_FP <- 0
+  
+  
+for (i in 1:N_sim) {
+## 1) Concentration around the AET
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## beta) UF corrections
+
+  corrected_conc <- (base_conc_sim / simulated_RRF) * uf_val
+  
+  total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
+  total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
+  
+}
+
+FN_Rate_final <- total_FN / total_points
+FP_Rate_final <- total_FP / total_points
+
+
+summary_table <- rbind(summary_table, data.frame(
+    Method = m_name,
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
+    FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
+
+}
+
+UF_RSD
+```
+
+```{r}
+summary_table
+```
+
+## GC-MS Correction Factor percentile
+
+Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ Correction by dividing 16th percentile
+
+```{r}
+percentile <- function(x) {
+  return(quantile(x, .16))
+}
+
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_points <- N_sim * N_extractables
+
+
+for (i in 1:N_sim) {
+## 1) Concentration around the AET
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (20µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## gamma) 16th percentile Correction
+corrected_conc <- (base_conc_sim / simulated_RRF) * mean(simulated_RRF /  percentile(simulated_RRF))
+
+total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
+total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
+
+}
+
+FN_Rate_final <- total_FN / total_points
+FP_Rate_final <- total_FP / total_points
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "Percentile (16th)",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
+  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
+
+
+
+```
+
+## GC-MS Correction RRFlow
+
+Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ Correction by applying condition on the RRFs.
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_points <- N_sim * N_extractables
+
+for (i in 1:N_sim) {
+
+## 1) Concentration around the AET
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (20 µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## delta) RRflow condition
+
+corrected_conc <- base_conc_sim
+condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2)
+corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition]
+
+total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
+total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
+
+}
+
+FN_Rate_final <- total_FN / total_points
+FP_Rate_final <- total_FP / total_points
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "RRFlow",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
+  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
+```
+
+## GC-MS Correction RRF \< 1
+
+Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ Correction by applying condition on the RRFs.
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_points <- N_sim * N_extractables
+
+for (i in 1:N_sim) {
+
+## 1) Concentration around the AET
+base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (20 µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## epsilon RRF < 1
+
+corrected_conc <- base_conc_sim
+condition <- (simulated_RRF < 1)
+corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition]
+
+total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
+total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
+
+}
+
+FN_Rate_final <- total_FN / total_points
+FP_Rate_final <- total_FP / total_points
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "RRF<1",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
+  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
+
+
+summary_table
+```
+
+
+## Comparison
+
+```{r}
+plot_data <- summary_table %>%
+  pivot_longer(cols = c(FN_Rate, FP_Rate), names_to = "Type", values_to = "Rate") %>%
+  mutate(
+    SD = ifelse(Type == "FN_Rate", round(FN_SD*100, 2), round(FP_SD*100, 2)),
+    Type = ifelse(Type == "FN_Rate", "False Negative", "False Positive")
+  )
+
+method_levels <- c(
+  "No Correction",
+  "UF (2)", 
+  "UF (4)", 
+  "UF (5)", 
+  "UF (10)",  
+  "UF (RSD)",
+  "Percentile (16th)", 
+  "RRFlow",
+  "RRF<1",
+  "Machine Learning",
+  "Machine Learning_2"
+)
+
+plot_data$Method <- factor(plot_data$Method, levels = method_levels)
+
+
+ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), alpha = 0.8) +
+  geom_errorbar(aes(ymin = pmax(0, Rate*100 - 1.96*SD), ymax = Rate*100 + 1.96*SD), 
+                position = position_dodge(width = 0.9), width = 0.2) +
+  labs(
+    title = "Comparison of GC-MS Correction Methods (20 µg/mL)",
+    subtitle = "Conc. Uniform distribution (around AET), RRF bootstrapped data from CLAP list",
+    y = "Rate (%)",
+    x = "Method") +
+  geom_text(aes(label = sprintf("%.1f%%", Rate*100)), position = position_dodge(width = 0.9), hjust = -0.5, size = 3, vjust = 0.1) +
+  scale_fill_manual(values = c("False Negative" = "red", "False Positive" = "grey")) + 
+  scale_y_continuous(limits = c(0, 100)) +
+  theme_minimal() +
+  coord_flip()
+
+```
