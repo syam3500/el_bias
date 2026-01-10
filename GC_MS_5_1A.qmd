@@ -127,7 +127,7 @@ hist(lcmsneg_clap_clean$"20 µg/mL",
 ## Define AET
 
 ```{r}
-AET <- 5
+AET <- 0.2
 ```
 
 ## Uniform distribution
@@ -199,7 +199,7 @@ summary_table <- data.frame(
 
 Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ No UF correction
 
-Update 02 Jan 2026: add for loop and change the replace to FALSE
+Update 02 Jan 2026: add for loop and change the replace to FALSE Update 09 Jan 2026: add the exp concentration and change the base_conc_sim
 
 ```{r}
 set.seed(123)
@@ -213,11 +213,11 @@ total_points <- N_sim * N_extractables
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = TRUE)
 ## alpha) No Correction
-corrected_conc <- base_conc_sim / simulated_RRF
+corrected_conc <- base_conc_sim * simulated_RRF
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
 total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -255,13 +255,18 @@ hist(simulated_RRF,
 Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ UF correction : from 2, 4, 5, 10 and UF = 1/(1-RSD)
 
 ```{r}
+#rsd <- function(x) {
+  #return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+#}
+
 rsd <- function(x) {
-  return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+  x_use = x[x<=1&x>0.05]
+  return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
 }
 
 set.seed(123)
 N_sim <- 10000
-UF_RSD <- 1/(1-rsd(simulated_RRF)) # formula from ISO 10993-18
+UF_RSD <- 1/(1 - rsd(gcms_clap_clean$"5 µg/mL")) # formula from ISO 10993-18
 UF_list <- c(
   "UF (2)"   = 2, 
   "UF (4)"   = 4, 
@@ -281,12 +286,13 @@ for (m_name in names(UF_list)) {
   
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = TRUE)
 ## beta) UF corrections
-
-  corrected_conc <- (base_conc_sim / simulated_RRF) * uf_val
+  
+  exp_conc <- (base_conc_sim / simulated_RRF)
+  corrected_conc <- exp_conc * uf_val 
   
   total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
   total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -332,11 +338,13 @@ total_points <- N_sim * N_extractables
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = TRUE)
+
+exp_conc <- (base_conc_sim / simulated_RRF)
 ## gamma) 16th percentile Correction
-corrected_conc <- (base_conc_sim / simulated_RRF) * (mean(simulated_RRF) / percentile(simulated_RRF))
+corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
 total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -369,17 +377,21 @@ total_FN <- 0
 total_FP <- 0
 total_points <- N_sim * N_extractables
 
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
 for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+simulated_RRF <- sample(RRF_GCMS_superior0, size = N_extractables, replace = TRUE)
 ## delta) RRflow condition
 
-corrected_conc <- base_conc_sim
+exp_conc <- base_conc_sim * simulated_RRF
+corrected_conc <- exp_conc
 condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2)
-corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition]
+corrected_conc[condition] <- exp_conc[condition] / simulated_RRF[condition]
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
 total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -397,6 +409,10 @@ summary_table <- rbind(summary_table, data.frame(
   FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points)))
 ```
 
+```{r}
+summary_table
+```
+
 ## GC-MS Correction RRF \< 1
 
 Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ Correction by applying condition on the RRFs.
@@ -409,17 +425,21 @@ total_FN <- 0
 total_FP <- 0
 total_points <- N_sim * N_extractables
 
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
 for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+simulated_RRF <- sample(RRF_GCMS_superior0, size = N_extractables, replace = TRUE)
 ## epsilon RRF < 1
 
 corrected_conc <- base_conc_sim
 condition <- (simulated_RRF < 1)
 corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition]
+
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
 total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -474,11 +494,11 @@ sim_data <- gc_ms %>%
   sample_n(N_extractables, replace = TRUE)
   
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## E) RRF generated via the machine learning
 simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
-corrected_conc <- base_conc_sim / simulated_RRF
+corrected_conc <- base_conc_sim * simulated_RRF
 
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
@@ -535,11 +555,11 @@ sim_data <- data.frame(
 )
 
 ## 1) Concentration around the AET
-base_conc_sim <- sample(base_concentrations1, size = N_extractables, replace = TRUE)
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## E) RRF generated via the machine learning
 simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
-corrected_conc <- base_conc_sim / simulated_RRF
+corrected_conc <- base_conc_sim * simulated_RRF
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
 total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
@@ -591,7 +611,7 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
   geom_errorbar(aes(ymin = pmax(0, Rate*100 - 1.96*SD), ymax = Rate*100 + 1.96*SD), 
                 position = position_dodge(width = 0.9), width = 0.2) +
   labs(
-    title = "Comparison of GC-MS Correction Methods (5 µg/mL)",
+    title = paste0("Comparison of GC-MS Correction Methods (5 µg/mL)", " AET=", AET, "µg/mL"),
     subtitle = "Conc. Uniform distribution (around AET), RRF bootstrapped data from CLAP list",
     y = "Rate (%)",
     x = "Method") +
