@@ -201,10 +201,6 @@ summary_table <- data.frame(
 
 ## GC-MS No Correction Scenarios
 
-Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ No UF correction
-
-Update 02 Jan 2026: add for loop and change the replace to FALSE Update 09 Jan 2026: add the exp concentration and change the base_conc_sim
-
 ```{r}
 set.seed(123)
 N_sim <- 10000
@@ -220,7 +216,7 @@ for (i in 1:N_sim) {
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## B) Normal Distribution of RRF around 1
 simulated_RRF <- rnorm(N_extractables, 1, 0.2)
-## alpha) No Correction
+## I) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
@@ -310,9 +306,9 @@ for (i in 1:N_sim) {
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## B) Normal Distribution of RRF around 1
 simulated_RRF <- rnorm(N_extractables, 1, 0.2)
-## beta) UF corrections
+## II) UF corrections
   
-  exp_conc <- (base_conc_sim / simulated_RRF)
+  exp_conc <- (base_conc_sim * simulated_RRF)
   corrected_conc <- exp_conc * uf_val 
   
   total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
@@ -381,8 +377,8 @@ base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## B) Normal Distribution of RRF around 1
 simulated_RRF <- rnorm(N_extractables, 1, 0.2)
 
-exp_conc <- (base_conc_sim / simulated_RRF)
-## gamma) 16th percentile Correction
+exp_conc <- (base_conc_sim * simulated_RRF)
+## III) 16th percentile Correction
 corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
 
 total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
@@ -439,7 +435,7 @@ for (i in 1:N_sim) {
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## B) Normal Distribution of RRF around 1
 simulated_RRF <- rnorm(N_extractables, 1, 0.2)
-## delta) RRflow condition
+## IV) RRflow condition
 
 exp_conc <- base_conc_sim * simulated_RRF
 corrected_conc <- exp_conc
@@ -504,9 +500,9 @@ for (i in 1:N_sim) {
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## B) Normal Distribution of RRF around 1
 simulated_RRF <- rnorm(N_extractables, 1, 0.2)
-## epsilon RRF < 1
+## V RRF < 1
 
-corrected_conc <- base_conc_sim
+corrected_conc <- base_conc_sim * simulated_RRF
 condition <- (simulated_RRF < 1)
 corrected_conc[condition] <- corrected_conc[condition] / simulated_RRF[condition]
 
@@ -581,7 +577,7 @@ sim_data <- gc_ms %>%
   
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## E) RRF generated via the machine learning
+## VI) RRF generated via the machine learning
 simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
 corrected_conc <- base_conc_sim * simulated_RRF
@@ -631,71 +627,6 @@ hist(simulated_RRF)
 summary_table
 ```
 
-## Machine Learning_2
-
-Taking random values of different physico chemical characteristics
-
-```{r}
-set.seed(123)
-N_sim <- 10000
-N_extractables <- 80
-total_FN <- 0
-total_FP <- 0
-total_TP <- 0
-total_TN <- 0
-total_points <- N_sim * N_extractables
-
-for (i in 1:N_sim) {
-sim_data <- data.frame(
-  BP = rnorm(N_extractables, 359, 150),
-  `Refractive Index` = rnorm(N_extractables, 1.52, 0.09), 
-  TPSA = rnorm(N_extractables, 40, 26),
-  NHOHCount = sample(0:4, N_extractables, replace=TRUE),
-  NumHDonors = sample(0:4, N_extractables, replace=TRUE),
-  NumRotatableBonds = sample(0:35, N_extractables, replace=TRUE),
-  NOCount = sample(0:12, N_extractables, replace=TRUE),
-  check.names = FALSE 
-)
-
-## 1) Concentration around the AET
-base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## E) RRF generated via the machine learning
-simulated_RRF <- py$predict_rrf_raw(sim_data)
-## no correction
-corrected_conc <- base_conc_sim * simulated_RRF
-
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
-
-}
-
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
-F1 <- (2 * precision * recall / (precision + recall))
-beta <- 5
-f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
-
-summary_table <- rbind(summary_table, data.frame(
-  Method = "Machine Learning_2",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_betal = f_beta
-))
-
-
-```
-
 ## Comparison
 
 ```{r}
@@ -716,9 +647,7 @@ method_levels <- c(
   "Percentile (16th)", 
   "RRFlow",
   "RRF<1",
-  "Machine Learning",
-  "Machine Learning_2"
-)
+  "Machine Learning")
 
 plot_data$Method <- factor(plot_data$Method, levels = method_levels)
 
