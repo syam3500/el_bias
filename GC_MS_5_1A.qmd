@@ -208,7 +208,7 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
+
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
@@ -218,29 +218,36 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
 ## I) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "No Correction",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -266,7 +273,7 @@ hist(simulated_RRF,
 
 ## GC-MS Correction UF Factor
 
-Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ UF correction : from 2, 4, 5, 10 and UF = 1/(1-RSD)
+
 
 ```{r}
 rsd <- function(x) {
@@ -286,7 +293,6 @@ UF_list <- c(
 )
 
 N_extractables <- 80
-total_points <- N_sim * N_extractables
 
 for (m_name in names(UF_list)) {
   uf_val <- UF_list[[m_name]]
@@ -306,23 +312,29 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
   exp_conc <- (base_conc_sim * simulated_RRF)
   corrected_conc <- exp_conc * uf_val 
   
-  total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-  total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-  total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-  total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+  is_above_threshold <- base_conc_sim > AET
+  reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final+TN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 
 
@@ -330,8 +342,8 @@ summary_table <- rbind(summary_table, data.frame(
     Method = m_name,
     FN_Rate = FN_Rate_final,
     FP_Rate = FP_Rate_final,
-    FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-    FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
     precision = precision,
     recall = recall,
     F1 = F1,
@@ -361,7 +373,6 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
 
 
 for (i in 1:N_sim) {
@@ -374,29 +385,37 @@ exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
 corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "Percentile (16th)",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -407,13 +426,21 @@ summary_table <- rbind(summary_table, data.frame(
 
 ## GC-MS Correction RRFlow
 
+This simulation assumes that we know the true RRF of all compounds sampled and therefore performing the conditional correction. 
+We also force the UF to be positive by removing low and high responders. 
+
 ```{r}
 
+## RSD is calculated only for RRFs between 0.05 and 1 
+## 'Compounds with RRF lower than 0.05 are excluded from UF calculation (20 times lower than the internal standard).page 8
+## Therefore, as a criterion for RRF selection, only compounds with an RRF less than 1 are actually considered for UF calculation. page 8
+
 rsd <- function(x) {
-  x_use = x[x<=2&x>0.05]
+  x_use = x[x<=1&x>0.05]
   return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
 }
 
+## Simulation starts
 set.seed(123)
 N_sim <- 10000
 N_extractables <- 80
@@ -421,49 +448,59 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
 
+# remove 0 values
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
+# Apply Part 18 formula for database
 UF <- 1/(1-rsd(RRF_GCMS_superior0))
 
+
+# Start simulation
 for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+## A) Sampling of the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## IV) RRflow condition
 
-exp_conc <- base_conc_sim * simulated_RRF
-corrected_conc <- exp_conc
-condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2)
-corrected_conc[!condition] <- exp_conc[!condition] * UF
-corrected_conc[condition] <- base_conc_sim[condition]
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
+condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2) # RRFlow conditions rescaling factor should be focused only to those compounds which exhibits RRF< 0.5 and RRF>2 
+corrected_conc[condition] <- exp_conc[condition] / simulated_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
+  is_above_threshold <- base_conc_sim > AET
+  reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "RRFlow",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -473,12 +510,13 @@ summary_table <- rbind(summary_table, data.frame(
 ```
 
 ```{r}
+UF
 summary_table
 ```
 
-## GC-MS Correction RRF \< 1
+## GC-MS Correction percentile 10th
 
-Uniform concentration around the AET \\ Non Parametric Bootstrap with replacement of the GC/MS dataset \\ Correction by applying condition on the RRFs.
+Here we divide by the 10th percentile (which is arbitrary) assuming to capture the left hand side of the RRF database (low responders)
 
 ```{r}
 set.seed(123)
@@ -488,12 +526,12 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
+
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
-UF <- 1/(1-rsd(RRF_GCMS_superior0))
+conservative_RRF_estimate <- quantile(gcms_clap_clean$"5 µg/mL", 0.10)
 
 for (i in 1:N_sim) {
 
@@ -503,33 +541,40 @@ base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## V RRF < 1
 
-exp_conc <- base_conc_sim * simulated_RRF
-corrected_conc <- exp_conc
-condition <- (simulated_RRF < 1)
-corrected_conc[condition] <- exp_conc[condition] * UF
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc / conservative_RRF_estimate 
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
 summary_table <- rbind(summary_table, data.frame(
-  Method = "RRF<1",
+  Method = "Percentile 10th",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -539,24 +584,31 @@ summary_table <- rbind(summary_table, data.frame(
 
 ```
 
-## optimized UF?
+```{r}
+summary_table
+```
+
+## Optimised percentile
+
+
+Here we find the best percentile to divide to target a recall of 95% (which is also arbitrary)
 ```{r}
 set.seed(123)
 
 target_recall <- 0.95
 found <- FALSE
-optimal_UF <- NA
+optimal_percentile <- NA
 
 N_sim <- 10000
 N_extractables <- 80
-total_points <- N_sim * N_extractables
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
-for (test_UF in seq(1, 100, by = 1)) {
+for (test_percentile in seq(0.50, 0.01, by = -0.01)) {
   
-
+  conservative_RRF_estimate <- quantile(RRF_GCMS_superior0, test_percentile, na.rm=TRUE)
+  
   total_FN <- 0
   total_FP <- 0
   total_TP <- 0
@@ -564,64 +616,74 @@ for (test_UF in seq(1, 100, by = 1)) {
 
   for (i in 1:N_sim) {
     base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-    simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+    simulated_RRF <- sample(RRF_GCMS_superior0, size = N_extractables, replace = FALSE)
     
-    exp_conc <- base_conc_sim * simulated_RRF
-    corrected_conc <- exp_conc
-    
-    condition <- (simulated_RRF < 1)
-    
-    
-    corrected_conc[condition] <- exp_conc[condition] * test_UF 
+    exp_conc <- base_conc_sim * simulated_RRF   
 
-    total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-    total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-    total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-    total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
-  }
+    corrected_conc <- exp_conc / conservative_RRF_estimate 
+
+    is_above_threshold <- base_conc_sim > AET
+    reported_above_threshold <- corrected_conc > AET
+
+    total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+    total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+    total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+    total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+}
 
 
   current_recall <- total_TP / (total_TP + total_FN)
   
-  print(paste("Testing UF:", test_UF, "-> Recall:", round(current_recall, 4))) 
+  print(paste("Percentile:", test_percentile, "-> Recall:", round(current_recall, 4))) 
 
   if(current_recall >= target_recall) {
-    optimal_UF <- test_UF
+    optimal_percentile <- test_percentile
     found <- TRUE
-    break 
+    break  
   }
 }
 
-print(paste("Optimal UF for 95% Recall:", optimal_UF))
+if(found) {
+  print(paste("Optimal Percentile for 95% Recall:", optimal_percentile))
+  
+  count_Above_AET <- total_TP + total_FN
+  count_Below_AET  <- total_TN + total_FP
+  
+  FN_Rate_final <- total_FN / count_Above_AET
+  FP_Rate_final <- total_FP / count_Below_AET
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
-F1 <- (2 * precision * recall / (precision + recall))
-beta <- 5
-f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+  recall <- total_TP / count_Above_AET
+  precision <- total_TP / (total_TP + total_FP)
+  
+  F1 <- (2 * precision * recall / (precision + recall))
+  beta <- 5
+  f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
+  SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "RRF_optimized",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_betal = f_beta
-))
-
+  summary_table <- rbind(summary_table, data.frame(
+    Method = paste0("Optimized_P"),
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_betal = f_beta 
+  ))
+  
+} else {
+  print("1st percentile was not conservative enough to reach 95% recall.")
+}
 ```
+
 
 ```{r}
 summary_table
 ```
+
 
 
 
@@ -668,29 +730,37 @@ simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "Machine Learning",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -703,13 +773,7 @@ summary_table <- rbind(summary_table, data.frame(
 summary_table
 ```
 
-```{r}
-hist(simulated_RRF)
-```
 
-```{r}
-summary_table
-```
 
 ## Comparison
 
@@ -730,8 +794,9 @@ method_levels <- c(
   "UF (RSD)",
   "Percentile (16th)", 
   "RRFlow",
-  "RRF<1",
-  "Machine Learning")
+  "Percentile 10th",
+  "Machine Learning",
+  "Optimized_P")
 
 plot_data$Method <- factor(plot_data$Method, levels = method_levels)
 
@@ -780,3 +845,5 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
   theme_minimal()
 
 ```
+
+

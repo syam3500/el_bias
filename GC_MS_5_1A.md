@@ -337,7 +337,7 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
+
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
@@ -347,29 +347,36 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
 ## I) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "No Correction",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -382,7 +389,7 @@ summary_table
 ```
 
              Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1 No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
+    1 No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
          recall        F1   f_betal
     1 0.1852815 0.3057258 0.1910719
 
@@ -406,10 +413,6 @@ hist(simulated_RRF,
 
 ## GC-MS Correction UF Factor
 
-Uniform concentration around the AET \\ Non Parametric Bootstrap with
-replacement of the GC/MS dataset \\ UF correction : from 2, 4, 5, 10 and
-UF = 1/(1-RSD)
-
 ``` r
 rsd <- function(x) {
   return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
@@ -428,7 +431,6 @@ UF_list <- c(
 )
 
 N_extractables <- 80
-total_points <- N_sim * N_extractables
 
 for (m_name in names(UF_list)) {
   uf_val <- UF_list[[m_name]]
@@ -448,23 +450,29 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
   exp_conc <- (base_conc_sim * simulated_RRF)
   corrected_conc <- exp_conc * uf_val 
   
-  total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-  total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-  total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-  total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+  is_above_threshold <- base_conc_sim > AET
+  reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final+TN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 
 
@@ -472,8 +480,8 @@ summary_table <- rbind(summary_table, data.frame(
     Method = m_name,
     FN_Rate = FN_Rate_final,
     FP_Rate = FP_Rate_final,
-    FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-    FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
     precision = precision,
     recall = recall,
     F1 = F1,
@@ -492,18 +500,18 @@ summary_table
 ```
 
              Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1 No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
-    2        UF (2) 0.4186413 0.06090000 0.0005515668 0.0002673742 0.8031754
-    3        UF (4) 0.2893275 0.12409625 0.0005069728 0.0003686061 0.7523746
-    4        UF (5) 0.2550050 0.14462625 0.0004873108 0.0003932390 0.7399487
-    5       UF (10) 0.1866387 0.20618625 0.0004356098 0.0004523183 0.6993274
-    6      UF (RSD) 0.6664125 0.00000000 0.0005271467 0.0000000000       NaN
+    1 No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
+    2        UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
+    3        UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
+    4        UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
+    5       UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
+    6      UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
          recall        F1   f_betal
     1 0.1852815 0.3057258 0.1910719
-    2 0.4774874 0.5989182 0.4850524
-    3 0.6427958 0.6932819 0.6464168
-    4 0.6854433 0.7116539 0.6873908
-    5 0.7898279 0.7418276 0.7859161
+    2 0.3724966 0.5089516 0.3803407
+    3 0.5658196 0.6458962 0.5712676
+    4 0.6174105 0.6731484 0.6213682
+    5 0.7198468 0.7094388 0.7190354
     6 0.0000000       NaN       NaN
 
 ## GC-MS Correction Factor percentile
@@ -520,7 +528,6 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
 
 
 for (i in 1:N_sim) {
@@ -533,29 +540,37 @@ exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
 corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET))
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET))
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET))
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET))
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
 
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "Percentile (16th)",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -565,12 +580,21 @@ summary_table <- rbind(summary_table, data.frame(
 
 ## GC-MS Correction RRFlow
 
+This simulation assumes that we know the true RRF of all compounds
+sampled and therefore performing the conditional correction. We also
+force the UF to be positive by removing low and high responders.
+
 ``` r
+## RSD is calculated only for RRFs between 0.05 and 1 
+## 'Compounds with RRF lower than 0.05 are excluded from UF calculation (20 times lower than the internal standard).page 8
+## Therefore, as a criterion for RRF selection, only compounds with an RRF less than 1 are actually considered for UF calculation. page 8
+
 rsd <- function(x) {
-  x_use = x[x<=2&x>0.05]
+  x_use = x[x<=1&x>0.05]
   return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
 }
 
+## Simulation starts
 set.seed(123)
 N_sim <- 10000
 N_extractables <- 80
@@ -578,12 +602,114 @@ total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-total_points <- N_sim * N_extractables
+
+# remove 0 values
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+# Apply Part 18 formula for database
+UF <- 1/(1-rsd(RRF_GCMS_superior0))
+
+
+# Start simulation
+for (i in 1:N_sim) {
+
+## 1) Concentration around the AET
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
+## A) Sampling of the GC/MS dataset (5µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+## IV) RRflow condition
+
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
+condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2) # RRFlow conditions rescaling factor should be focused only to those compounds which exhibits RRF< 0.5 and RRF>2 
+corrected_conc[condition] <- exp_conc[condition] / simulated_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
+
+  is_above_threshold <- base_conc_sim > AET
+  reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "RRFlow",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
+  precision = precision,
+  recall = recall,
+  F1 = F1,
+  f_betal = f_beta
+))
+```
+
+``` r
+UF
+```
+
+    [1] 2.864589
+
+``` r
+summary_table
+```
+
+                 Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
+    1     No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
+    2            UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
+    3            UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
+    4            UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
+    5           UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
+    6          UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
+    7 Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
+    8            RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
+         recall        F1   f_betal
+    1 0.1852815 0.3057258 0.1910719
+    2 0.3724966 0.5089516 0.3803407
+    3 0.5658196 0.6458962 0.5712676
+    4 0.6174105 0.6731484 0.6213682
+    5 0.7198468 0.7094388 0.7190354
+    6 0.0000000       NaN       NaN
+    7 0.7721758 0.7160955 0.7675520
+    8 1.0000000 0.9355424 0.9947280
+
+## GC-MS Correction percentile 10th
+
+Here we divide by the 10th percentile (which is arbitrary) assuming to
+capture the left hand side of the RRF database (low responders)
+
+``` r
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
-UF <- 1/(1-rsd(RRF_GCMS_superior0))
+conservative_RRF_estimate <- quantile(gcms_clap_clean$"5 µg/mL", 0.10)
 
 for (i in 1:N_sim) {
 
@@ -591,36 +717,42 @@ for (i in 1:N_sim) {
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
 ## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
-## IV) RRflow condition
+## V RRF < 1
 
-exp_conc <- base_conc_sim * simulated_RRF
-corrected_conc <- exp_conc
-condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2)
-corrected_conc[!condition] <- exp_conc[!condition] * UF
-corrected_conc[condition] <- base_conc_sim[condition]
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc / conservative_RRF_estimate 
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
 summary_table <- rbind(summary_table, data.frame(
-  Method = "RRFlow",
+  Method = "Percentile 10th",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -633,106 +765,48 @@ summary_table
 ```
 
                  Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1     No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
-    2            UF (2) 0.4186413 0.06090000 0.0005515668 0.0002673742 0.8031754
-    3            UF (4) 0.2893275 0.12409625 0.0005069728 0.0003686061 0.7523746
-    4            UF (5) 0.2550050 0.14462625 0.0004873108 0.0003932390 0.7399487
-    5           UF (10) 0.1866387 0.20618625 0.0004356098 0.0004523183 0.6993274
-    6          UF (RSD) 0.6664125 0.00000000 0.0005271467 0.0000000000       NaN
-    7 Percentile (16th) 0.1519938 0.25648875 0.0004013908 0.0004882395 0.6676095
-    8            RRFlow 0.0000000 0.08659000 0.0000000000 0.0003144284 0.8851201
+    1     No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
+    2            UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
+    3            UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
+    4            UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
+    5           UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
+    6          UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
+    7 Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
+    8            RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
+    9   Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
          recall        F1   f_betal
     1 0.1852815 0.3057258 0.1910719
-    2 0.4774874 0.5989182 0.4850524
-    3 0.6427958 0.6932819 0.6464168
-    4 0.6854433 0.7116539 0.6873908
-    5 0.7898279 0.7418276 0.7859161
+    2 0.3724966 0.5089516 0.3803407
+    3 0.5658196 0.6458962 0.5712676
+    4 0.6174105 0.6731484 0.6213682
+    5 0.7198468 0.7094388 0.7190354
     6 0.0000000       NaN       NaN
     7 0.7721758 0.7160955 0.7675520
-    8 1.0000000 0.9390596 0.9950329
+    8 1.0000000 0.9355424 0.9947280
+    9 0.8914343 0.7632590 0.8800658
 
-## GC-MS Correction RRF \< 1
+## Optimised percentile
 
-Uniform concentration around the AET \\ Non Parametric Bootstrap with
-replacement of the GC/MS dataset \\ Correction by applying condition on
-the RRFs.
-
-``` r
-set.seed(123)
-N_sim <- 10000
-N_extractables <- 80
-total_FN <- 0
-total_FP <- 0
-total_TP <- 0
-total_TN <- 0
-total_points <- N_sim * N_extractables
-
-RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
-RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
-
-UF <- 1/(1-rsd(RRF_GCMS_superior0))
-
-for (i in 1:N_sim) {
-
-## 1) Concentration around the AET
-base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
-simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
-## V RRF < 1
-
-exp_conc <- base_conc_sim * simulated_RRF
-corrected_conc <- exp_conc
-condition <- (simulated_RRF < 1)
-corrected_conc[condition] <- exp_conc[condition] * UF
-
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
-}
-
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
-F1 <- (2 * precision * recall / (precision + recall))
-beta <- 5
-f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
-
-summary_table <- rbind(summary_table, data.frame(
-  Method = "RRF<1",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_betal = f_beta
-))
-```
-
-## optimized UF?
+Here we find the best percentile to divide to target a recall of 95%
+(which is also arbitrary)
 
 ``` r
 set.seed(123)
 
 target_recall <- 0.95
 found <- FALSE
-optimal_UF <- NA
+optimal_percentile <- NA
 
 N_sim <- 10000
 N_extractables <- 80
-total_points <- N_sim * N_extractables
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
-for (test_UF in seq(1, 100, by = 1)) {
+for (test_percentile in seq(0.50, 0.01, by = -0.01)) {
   
-
+  conservative_RRF_estimate <- quantile(RRF_GCMS_superior0, test_percentile, na.rm=TRUE)
+  
   total_FN <- 0
   total_FP <- 0
   total_TP <- 0
@@ -740,193 +814,140 @@ for (test_UF in seq(1, 100, by = 1)) {
 
   for (i in 1:N_sim) {
     base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-    simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+    simulated_RRF <- sample(RRF_GCMS_superior0, size = N_extractables, replace = FALSE)
     
-    exp_conc <- base_conc_sim * simulated_RRF
-    corrected_conc <- exp_conc
-    
-    condition <- (simulated_RRF < 1)
-    
-    
-    corrected_conc[condition] <- exp_conc[condition] * test_UF 
+    exp_conc <- base_conc_sim * simulated_RRF   
 
-    total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-    total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-    total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-    total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
-  }
+    corrected_conc <- exp_conc / conservative_RRF_estimate 
 
+    is_above_threshold <- base_conc_sim > AET
+    reported_above_threshold <- corrected_conc > AET
 
+    total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+    total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+    total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+    total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+}
+
+  # Calculate Recall (Sensitivity)
+  # Denominator: All Truly Toxic (TP + FN)
   current_recall <- total_TP / (total_TP + total_FN)
   
-  print(paste("Testing UF:", test_UF, "-> Recall:", round(current_recall, 4))) 
+  print(paste("Percentile:", test_percentile, "-> Recall:", round(current_recall, 4))) 
 
   if(current_recall >= target_recall) {
-    optimal_UF <- test_UF
+    optimal_percentile <- test_percentile
     found <- TRUE
-    break 
+    break  
   }
 }
 ```
 
-    [1] "Testing UF: 1 -> Recall: 0.1853"
-    [1] "Testing UF: 2 -> Recall: 0.3722"
-    [1] "Testing UF: 3 -> Recall: 0.4846"
-    [1] "Testing UF: 4 -> Recall: 0.5656"
-    [1] "Testing UF: 5 -> Recall: 0.6176"
-    [1] "Testing UF: 6 -> Recall: 0.657"
-    [1] "Testing UF: 7 -> Recall: 0.6823"
-    [1] "Testing UF: 8 -> Recall: 0.6992"
-    [1] "Testing UF: 9 -> Recall: 0.7115"
-    [1] "Testing UF: 10 -> Recall: 0.7194"
-    [1] "Testing UF: 11 -> Recall: 0.723"
-    [1] "Testing UF: 12 -> Recall: 0.7259"
-    [1] "Testing UF: 13 -> Recall: 0.7288"
-    [1] "Testing UF: 14 -> Recall: 0.731"
-    [1] "Testing UF: 15 -> Recall: 0.7319"
-    [1] "Testing UF: 16 -> Recall: 0.7356"
-    [1] "Testing UF: 17 -> Recall: 0.7369"
-    [1] "Testing UF: 18 -> Recall: 0.739"
-    [1] "Testing UF: 19 -> Recall: 0.7411"
-    [1] "Testing UF: 20 -> Recall: 0.7417"
-    [1] "Testing UF: 21 -> Recall: 0.7437"
-    [1] "Testing UF: 22 -> Recall: 0.7453"
-    [1] "Testing UF: 23 -> Recall: 0.7466"
-    [1] "Testing UF: 24 -> Recall: 0.7484"
-    [1] "Testing UF: 25 -> Recall: 0.7494"
-    [1] "Testing UF: 26 -> Recall: 0.7512"
-    [1] "Testing UF: 27 -> Recall: 0.7521"
-    [1] "Testing UF: 28 -> Recall: 0.7535"
-    [1] "Testing UF: 29 -> Recall: 0.7541"
-    [1] "Testing UF: 30 -> Recall: 0.7553"
-    [1] "Testing UF: 31 -> Recall: 0.7563"
-    [1] "Testing UF: 32 -> Recall: 0.7567"
-    [1] "Testing UF: 33 -> Recall: 0.7571"
-    [1] "Testing UF: 34 -> Recall: 0.7566"
-    [1] "Testing UF: 35 -> Recall: 0.7572"
-    [1] "Testing UF: 36 -> Recall: 0.7576"
-    [1] "Testing UF: 37 -> Recall: 0.7592"
-    [1] "Testing UF: 38 -> Recall: 0.7598"
-    [1] "Testing UF: 39 -> Recall: 0.761"
-    [1] "Testing UF: 40 -> Recall: 0.7621"
-    [1] "Testing UF: 41 -> Recall: 0.7621"
-    [1] "Testing UF: 42 -> Recall: 0.7638"
-    [1] "Testing UF: 43 -> Recall: 0.7635"
-    [1] "Testing UF: 44 -> Recall: 0.764"
-    [1] "Testing UF: 45 -> Recall: 0.7653"
-    [1] "Testing UF: 46 -> Recall: 0.7656"
-    [1] "Testing UF: 47 -> Recall: 0.7659"
-    [1] "Testing UF: 48 -> Recall: 0.7668"
-    [1] "Testing UF: 49 -> Recall: 0.7669"
-    [1] "Testing UF: 50 -> Recall: 0.7671"
-    [1] "Testing UF: 51 -> Recall: 0.7675"
-    [1] "Testing UF: 52 -> Recall: 0.7673"
-    [1] "Testing UF: 53 -> Recall: 0.7674"
-    [1] "Testing UF: 54 -> Recall: 0.7681"
-    [1] "Testing UF: 55 -> Recall: 0.7683"
-    [1] "Testing UF: 56 -> Recall: 0.7683"
-    [1] "Testing UF: 57 -> Recall: 0.7684"
-    [1] "Testing UF: 58 -> Recall: 0.7693"
-    [1] "Testing UF: 59 -> Recall: 0.7692"
-    [1] "Testing UF: 60 -> Recall: 0.7689"
-    [1] "Testing UF: 61 -> Recall: 0.7702"
-    [1] "Testing UF: 62 -> Recall: 0.7699"
-    [1] "Testing UF: 63 -> Recall: 0.7701"
-    [1] "Testing UF: 64 -> Recall: 0.7703"
-    [1] "Testing UF: 65 -> Recall: 0.7707"
-    [1] "Testing UF: 66 -> Recall: 0.7707"
-    [1] "Testing UF: 67 -> Recall: 0.771"
-    [1] "Testing UF: 68 -> Recall: 0.7716"
-    [1] "Testing UF: 69 -> Recall: 0.7717"
-    [1] "Testing UF: 70 -> Recall: 0.7714"
-    [1] "Testing UF: 71 -> Recall: 0.7719"
-    [1] "Testing UF: 72 -> Recall: 0.7716"
-    [1] "Testing UF: 73 -> Recall: 0.7711"
-    [1] "Testing UF: 74 -> Recall: 0.7712"
-    [1] "Testing UF: 75 -> Recall: 0.772"
-    [1] "Testing UF: 76 -> Recall: 0.7719"
-    [1] "Testing UF: 77 -> Recall: 0.7714"
-    [1] "Testing UF: 78 -> Recall: 0.7712"
-    [1] "Testing UF: 79 -> Recall: 0.7719"
-    [1] "Testing UF: 80 -> Recall: 0.7721"
-    [1] "Testing UF: 81 -> Recall: 0.7715"
-    [1] "Testing UF: 82 -> Recall: 0.7715"
-    [1] "Testing UF: 83 -> Recall: 0.7719"
-    [1] "Testing UF: 84 -> Recall: 0.7716"
-    [1] "Testing UF: 85 -> Recall: 0.772"
-    [1] "Testing UF: 86 -> Recall: 0.7717"
-    [1] "Testing UF: 87 -> Recall: 0.7719"
-    [1] "Testing UF: 88 -> Recall: 0.7721"
-    [1] "Testing UF: 89 -> Recall: 0.7721"
-    [1] "Testing UF: 90 -> Recall: 0.7715"
-    [1] "Testing UF: 91 -> Recall: 0.7715"
-    [1] "Testing UF: 92 -> Recall: 0.772"
-    [1] "Testing UF: 93 -> Recall: 0.7713"
-    [1] "Testing UF: 94 -> Recall: 0.7719"
-    [1] "Testing UF: 95 -> Recall: 0.7719"
-    [1] "Testing UF: 96 -> Recall: 0.7721"
-    [1] "Testing UF: 97 -> Recall: 0.7719"
-    [1] "Testing UF: 98 -> Recall: 0.7715"
-    [1] "Testing UF: 99 -> Recall: 0.7725"
-    [1] "Testing UF: 100 -> Recall: 0.7725"
+    [1] "Percentile: 0.5 -> Recall: 0.6074"
+    [1] "Percentile: 0.49 -> Recall: 0.6107"
+    [1] "Percentile: 0.48 -> Recall: 0.6186"
+    [1] "Percentile: 0.47 -> Recall: 0.6288"
+    [1] "Percentile: 0.46 -> Recall: 0.664"
+    [1] "Percentile: 0.45 -> Recall: 0.6798"
+    [1] "Percentile: 0.44 -> Recall: 0.6841"
+    [1] "Percentile: 0.43 -> Recall: 0.6879"
+    [1] "Percentile: 0.42 -> Recall: 0.6985"
+    [1] "Percentile: 0.41 -> Recall: 0.707"
+    [1] "Percentile: 0.4 -> Recall: 0.7139"
+    [1] "Percentile: 0.39 -> Recall: 0.7195"
+    [1] "Percentile: 0.38 -> Recall: 0.7221"
+    [1] "Percentile: 0.37 -> Recall: 0.7259"
+    [1] "Percentile: 0.36 -> Recall: 0.7273"
+    [1] "Percentile: 0.35 -> Recall: 0.7318"
+    [1] "Percentile: 0.34 -> Recall: 0.739"
+    [1] "Percentile: 0.33 -> Recall: 0.7509"
+    [1] "Percentile: 0.32 -> Recall: 0.7667"
+    [1] "Percentile: 0.31 -> Recall: 0.7673"
+    [1] "Percentile: 0.3 -> Recall: 0.7687"
+    [1] "Percentile: 0.29 -> Recall: 0.7725"
+    [1] "Percentile: 0.28 -> Recall: 0.7778"
+    [1] "Percentile: 0.27 -> Recall: 0.7907"
+    [1] "Percentile: 0.26 -> Recall: 0.8016"
+    [1] "Percentile: 0.25 -> Recall: 0.8039"
+    [1] "Percentile: 0.24 -> Recall: 0.8053"
+    [1] "Percentile: 0.23 -> Recall: 0.8067"
+    [1] "Percentile: 0.22 -> Recall: 0.8086"
+    [1] "Percentile: 0.21 -> Recall: 0.8119"
+    [1] "Percentile: 0.2 -> Recall: 0.8138"
+    [1] "Percentile: 0.19 -> Recall: 0.8182"
+    [1] "Percentile: 0.18 -> Recall: 0.829"
+    [1] "Percentile: 0.17 -> Recall: 0.8411"
+    [1] "Percentile: 0.16 -> Recall: 0.847"
+    [1] "Percentile: 0.15 -> Recall: 0.8566"
+    [1] "Percentile: 0.14 -> Recall: 0.8631"
+    [1] "Percentile: 0.13 -> Recall: 0.8658"
+    [1] "Percentile: 0.12 -> Recall: 1"
 
 ``` r
-print(paste("Optimal UF for 95% Recall:", optimal_UF))
+if(found) {
+  print(paste("Optimal Percentile for 95% Recall:", optimal_percentile))
+  
+  count_Above_AET <- total_TP + total_FN
+  count_Below_AET  <- total_TN + total_FP
+  
+  FN_Rate_final <- total_FN / count_Above_AET
+  FP_Rate_final <- total_FP / count_Below_AET
+
+  recall <- total_TP / count_Above_AET
+  precision <- total_TP / (total_TP + total_FP)
+  
+  F1 <- (2 * precision * recall / (precision + recall))
+  beta <- 5
+  f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+  SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+  summary_table <- rbind(summary_table, data.frame(
+    Method = paste0("Optimized_P"),
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_betal = f_beta 
+  ))
+  
+} else {
+  print("1st percentile was not conservative enough to reach 95% recall.")
+}
 ```
 
-    [1] "Optimal UF for 95% Recall: NA"
-
-``` r
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
-F1 <- (2 * precision * recall / (precision + recall))
-beta <- 5
-f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
-
-
-summary_table <- rbind(summary_table, data.frame(
-  Method = "RRF_optimized",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_betal = f_beta
-))
-```
+    [1] "Optimal Percentile for 95% Recall: 0.12"
 
 ``` r
 summary_table
 ```
 
                   Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1      No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
-    2             UF (2) 0.4186413 0.06090000 0.0005515668 0.0002673742 0.8031754
-    3             UF (4) 0.2893275 0.12409625 0.0005069728 0.0003686061 0.7523746
-    4             UF (5) 0.2550050 0.14462625 0.0004873108 0.0003932390 0.7399487
-    5            UF (10) 0.1866387 0.20618625 0.0004356098 0.0004523183 0.6993274
-    6           UF (RSD) 0.6664125 0.00000000 0.0005271467 0.0000000000       NaN
-    7  Percentile (16th) 0.1519938 0.25648875 0.0004013908 0.0004882395 0.6676095
-    8             RRFlow 0.0000000 0.08659000 0.0000000000 0.0003144284 0.8851201
-    9              RRF<1 0.2217487 0.15294125 0.0004644570 0.0004024149 0.7443934
-    10     RRF_optimized 0.1518087 0.24027500 0.0004011902 0.0004776805 0.6820629
+    1      No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
+    2             UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
+    3             UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
+    4             UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
+    5            UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
+    6           UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
+    7  Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
+    8             RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
+    9    Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
+    10       Optimized_P 0.0000000 0.86558377 0.0000000000 0.0006609626 0.6983468
           recall        F1   f_betal
     1  0.1852815 0.3057258 0.1910719
-    2  0.4774874 0.5989182 0.4850524
-    3  0.6427958 0.6932819 0.6464168
-    4  0.6854433 0.7116539 0.6873908
-    5  0.7898279 0.7418276 0.7859161
+    2  0.3724966 0.5089516 0.3803407
+    3  0.5658196 0.6458962 0.5712676
+    4  0.6174105 0.6731484 0.6213682
+    5  0.7198468 0.7094388 0.7190354
     6  0.0000000       NaN       NaN
     7  0.7721758 0.7160955 0.7675520
-    8  1.0000000 0.9390596 0.9950329
-    9  0.6676197 0.7039194 0.6702786
-    10 0.7724911 0.7244661 0.7685719
+    8  1.0000000 0.9355424 0.9947280
+    9  0.8914343 0.7632590 0.8800658
+    10 1.0000000 0.8223842 0.9836579
 
 ## Machine Learning
 
@@ -990,29 +1011,37 @@ simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-total_FN <- total_FN + sum((base_conc_sim > AET) & (corrected_conc < AET), na.rm = TRUE)
-total_FP <- total_FP + sum((base_conc_sim < AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TP <- total_TP + sum((base_conc_sim > AET) & (corrected_conc > AET), na.rm = TRUE)
-total_TN <- total_TN + sum((base_conc_sim < AET) & (corrected_conc < AET), na.rm = TRUE)
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-FN_Rate_final <- total_FN / total_points
-FP_Rate_final <- total_FP / total_points
-TP_Rate_final <- total_TP / total_points
-TN_Rate_final <- total_TN / total_points
-precision <- TP_Rate_final / (TP_Rate_final+FP_Rate_final)
-recall <- TP_Rate_final / (TP_Rate_final + FN_Rate_final)
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 
 summary_table <- rbind(summary_table, data.frame(
   Method = "Machine Learning",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
-  FN_SD = sqrt(FN_Rate_final * (1 - FN_Rate_final) / total_points),
-  FP_SD = sqrt(FP_Rate_final * (1 - FP_Rate_final) / total_points),
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
   precision = precision,
   recall = recall,
   F1 = F1,
@@ -1025,63 +1054,28 @@ summary_table
 ```
 
                   Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1      No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
-    2             UF (2) 0.4186413 0.06090000 0.0005515668 0.0002673742 0.8031754
-    3             UF (4) 0.2893275 0.12409625 0.0005069728 0.0003686061 0.7523746
-    4             UF (5) 0.2550050 0.14462625 0.0004873108 0.0003932390 0.7399487
-    5            UF (10) 0.1866387 0.20618625 0.0004356098 0.0004523183 0.6993274
-    6           UF (RSD) 0.6664125 0.00000000 0.0005271467 0.0000000000       NaN
-    7  Percentile (16th) 0.1519938 0.25648875 0.0004013908 0.0004882395 0.6676095
-    8             RRFlow 0.0000000 0.08659000 0.0000000000 0.0003144284 0.8851201
-    9              RRF<1 0.2217487 0.15294125 0.0004644570 0.0004024149 0.7443934
-    10     RRF_optimized 0.1518087 0.24027500 0.0004011902 0.0004776805 0.6820629
-    11  Machine Learning 0.6663025 0.00000000 0.0005271900 0.0000000000       NaN
+    1      No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
+    2             UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
+    3             UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
+    4             UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
+    5            UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
+    6           UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
+    7  Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
+    8             RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
+    9    Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
+    10       Optimized_P 0.0000000 0.86558377 0.0000000000 0.0006609626 0.6983468
+    11  Machine Learning 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
           recall        F1   f_betal
     1  0.1852815 0.3057258 0.1910719
-    2  0.4774874 0.5989182 0.4850524
-    3  0.6427958 0.6932819 0.6464168
-    4  0.6854433 0.7116539 0.6873908
-    5  0.7898279 0.7418276 0.7859161
+    2  0.3724966 0.5089516 0.3803407
+    3  0.5658196 0.6458962 0.5712676
+    4  0.6174105 0.6731484 0.6213682
+    5  0.7198468 0.7094388 0.7190354
     6  0.0000000       NaN       NaN
     7  0.7721758 0.7160955 0.7675520
-    8  1.0000000 0.9390596 0.9950329
-    9  0.6676197 0.7039194 0.6702786
-    10 0.7724911 0.7244661 0.7685719
-    11 0.0000000       NaN       NaN
-
-``` r
-hist(simulated_RRF)
-```
-
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-27-1.png)
-
-``` r
-summary_table
-```
-
-                  Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1      No Correction 0.5435425 0.01787625 0.0005568932 0.0001481414 0.8736549
-    2             UF (2) 0.4186413 0.06090000 0.0005515668 0.0002673742 0.8031754
-    3             UF (4) 0.2893275 0.12409625 0.0005069728 0.0003686061 0.7523746
-    4             UF (5) 0.2550050 0.14462625 0.0004873108 0.0003932390 0.7399487
-    5            UF (10) 0.1866387 0.20618625 0.0004356098 0.0004523183 0.6993274
-    6           UF (RSD) 0.6664125 0.00000000 0.0005271467 0.0000000000       NaN
-    7  Percentile (16th) 0.1519938 0.25648875 0.0004013908 0.0004882395 0.6676095
-    8             RRFlow 0.0000000 0.08659000 0.0000000000 0.0003144284 0.8851201
-    9              RRF<1 0.2217487 0.15294125 0.0004644570 0.0004024149 0.7443934
-    10     RRF_optimized 0.1518087 0.24027500 0.0004011902 0.0004776805 0.6820629
-    11  Machine Learning 0.6663025 0.00000000 0.0005271900 0.0000000000       NaN
-          recall        F1   f_betal
-    1  0.1852815 0.3057258 0.1910719
-    2  0.4774874 0.5989182 0.4850524
-    3  0.6427958 0.6932819 0.6464168
-    4  0.6854433 0.7116539 0.6873908
-    5  0.7898279 0.7418276 0.7859161
-    6  0.0000000       NaN       NaN
-    7  0.7721758 0.7160955 0.7675520
-    8  1.0000000 0.9390596 0.9950329
-    9  0.6676197 0.7039194 0.6702786
-    10 0.7724911 0.7244661 0.7685719
+    8  1.0000000 0.9355424 0.9947280
+    9  0.8914343 0.7632590 0.8800658
+    10 1.0000000 0.8223842 0.9836579
     11 0.0000000       NaN       NaN
 
 ## Comparison
@@ -1103,8 +1097,9 @@ method_levels <- c(
   "UF (RSD)",
   "Percentile (16th)", 
   "RRFlow",
-  "RRF<1",
-  "Machine Learning")
+  "Percentile 10th",
+  "Machine Learning",
+  "Optimized_P")
 
 plot_data$Method <- factor(plot_data$Method, levels = method_levels)
 
@@ -1125,7 +1120,7 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
   coord_flip()
 ```
 
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-29-1.png)
+![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-28-1.png)
 
 ``` r
 summary_table %>%
@@ -1134,15 +1129,15 @@ summary_table %>%
 
                   Method precision    recall        F1   f_betal
     1      No Correction 0.8736549 0.1852815 0.3057258 0.1910719
-    2             UF (2) 0.8031754 0.4774874 0.5989182 0.4850524
-    3             UF (4) 0.7523746 0.6427958 0.6932819 0.6464168
-    4             UF (5) 0.7399487 0.6854433 0.7116539 0.6873908
-    5            UF (10) 0.6993274 0.7898279 0.7418276 0.7859161
+    2             UF (2) 0.8031754 0.3724966 0.5089516 0.3803407
+    3             UF (4) 0.7523746 0.5658196 0.6458962 0.5712676
+    4             UF (5) 0.7399487 0.6174105 0.6731484 0.6213682
+    5            UF (10) 0.6993274 0.7198468 0.7094388 0.7190354
     6           UF (RSD)       NaN 0.0000000       NaN       NaN
     7  Percentile (16th) 0.6676095 0.7721758 0.7160955 0.7675520
-    8             RRFlow 0.8851201 1.0000000 0.9390596 0.9950329
-    9              RRF<1 0.7443934 0.6676197 0.7039194 0.6702786
-    10     RRF_optimized 0.6820629 0.7724911 0.7244661 0.7685719
+    8             RRFlow 0.8788913 1.0000000 0.9355424 0.9947280
+    9    Percentile 10th 0.6673095 0.8914343 0.7632590 0.8800658
+    10       Optimized_P 0.6983468 1.0000000 0.8223842 0.9836579
     11  Machine Learning       NaN 0.0000000       NaN       NaN
 
 ROC and Precision Recall plots
@@ -1158,7 +1153,7 @@ ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
   theme_minimal()
 ```
 
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-31-1.png)
+![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-30-1.png)
 
 ``` r
 ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
@@ -1174,4 +1169,4 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
     Warning: Removed 2 rows containing missing values or values outside the scale range
     (`geom_point()`).
 
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-31-2.png)
+![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-30-2.png)
