@@ -374,6 +374,11 @@ total_FP <- 0
 total_TP <- 0
 total_TN <- 0
 
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+meanGCMS <- mean(RRF_GCMS_superior0)
+percentileGCMS <- percentile(RRF_GCMS_superior0)
 
 for (i in 1:N_sim) {
 ## 2) Concentration from the log-normal distribution
@@ -383,7 +388,7 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
 
 exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
-corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
+corrected_conc <- exp_conc * (meanGCMS / percentileGCMS)
 
 is_above_threshold <- base_conc_sim > AET
 reported_above_threshold <- corrected_conc > AET

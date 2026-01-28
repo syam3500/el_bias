@@ -273,8 +273,6 @@ hist(simulated_RRF,
 
 ## GC-MS Correction UF Factor
 
-
-
 ```{r}
 rsd <- function(x) {
   return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
@@ -374,6 +372,11 @@ total_FP <- 0
 total_TP <- 0
 total_TN <- 0
 
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+meanGCMS <- mean(RRF_GCMS_superior0)
+percentileGCMS <- percentile(RRF_GCMS_superior0)
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
@@ -383,7 +386,7 @@ simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, repla
 
 exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
-corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
+corrected_conc <- exp_conc * (meanGCMS / percentileGCMS)
 
 is_above_threshold <- base_conc_sim > AET
 reported_above_threshold <- corrected_conc > AET
@@ -426,8 +429,7 @@ summary_table <- rbind(summary_table, data.frame(
 
 ## GC-MS Correction RRFlow
 
-This simulation assumes that we know the true RRF of all compounds sampled and therefore performing the conditional correction. 
-We also force the UF to be positive by removing low and high responders. 
+This simulation assumes that we know the true RRF of all compounds sampled and therefore performing the conditional correction. We also force the UF to be positive by removing low and high responders.
 
 ```{r}
 
@@ -590,8 +592,8 @@ summary_table
 
 ## Optimised percentile
 
-
 Here we find the best percentile to divide to target a recall of 95% (which is also arbitrary)
+
 ```{r}
 set.seed(123)
 
@@ -679,13 +681,9 @@ SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 }
 ```
 
-
 ```{r}
 summary_table
 ```
-
-
-
 
 ## Machine Learning
 
@@ -773,8 +771,6 @@ summary_table <- rbind(summary_table, data.frame(
 summary_table
 ```
 
-
-
 ## Comparison
 
 ```{r}
@@ -845,5 +841,3 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
   theme_minimal()
 
 ```
-
-
