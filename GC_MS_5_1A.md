@@ -342,7 +342,7 @@ total_TN <- 0
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+## A) Sampling from the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## I) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
@@ -385,22 +385,13 @@ summary_table <- rbind(summary_table, data.frame(
 ```
 
 ``` r
-summary_table
-```
-
-             Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1 No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
-         recall        F1   f_betal
-    1 0.1852815 0.3057258 0.1910719
-
-``` r
 hist(base_conc_sim, 
      main = "Histogram of Base concentration around the AET", 
      xlab = "Concentration",
      col = "skyblue")
 ```
 
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-14-1.png)
+![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-13-1.png)
 
 ``` r
 hist(simulated_RRF,
@@ -409,7 +400,7 @@ hist(simulated_RRF,
      col = "grey")
 ```
 
-![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-14-2.png)
+![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-13-2.png)
 
 ## GC-MS Correction UF Factor
 
@@ -443,7 +434,7 @@ for (m_name in names(UF_list)) {
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+## A) Sampling from the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## II) UF corrections
   
@@ -514,7 +505,7 @@ summary_table
     5 0.7198468 0.7094388 0.7190354
     6 0.0000000       NaN       NaN
 
-## GC-MS Correction Factor percentile
+## GC-MS Correction Factor mean/16th percentile
 
 ``` r
 percentile <- function(x) {
@@ -529,16 +520,21 @@ total_FP <- 0
 total_TP <- 0
 total_TN <- 0
 
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+meanGCMS <- mean(RRF_GCMS_superior0)
+percentileGCMS <- percentile(RRF_GCMS_superior0)
 
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+## A) Sampling from the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 
 exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
-corrected_conc <- exp_conc * (mean(simulated_RRF) / percentile(simulated_RRF))
+corrected_conc <- exp_conc * (meanGCMS / percentileGCMS)
 
 is_above_threshold <- base_conc_sim > AET
 reported_above_threshold <- corrected_conc > AET
@@ -566,7 +562,7 @@ SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
 
 summary_table <- rbind(summary_table, data.frame(
-  Method = "Percentile (16th)",
+  Method = "Mean/Percentile (16th)",
   FN_Rate = FN_Rate_final,
   FP_Rate = FP_Rate_final,
   FN_SD = SD_FN,
@@ -616,14 +612,15 @@ for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Sampling of the GC/MS dataset (5µg/mL)
+## A) Sampling from the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
 ## IV) RRflow condition
-
+## add a normal / lognormal distribution to get a "exp" RRF with some variability e.g 30%
+exp_RRF <- simulated_RRF * rnorm(n = N_extractables, 1, 0.3)
 exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
 corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
 condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2) # RRFlow conditions rescaling factor should be focused only to those compounds which exhibits RRF< 0.5 and RRF>2 
-corrected_conc[condition] <- exp_conc[condition] / simulated_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
+corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
 
   is_above_threshold <- base_conc_sim > AET
   reported_above_threshold <- corrected_conc > AET
@@ -662,6 +659,91 @@ summary_table <- rbind(summary_table, data.frame(
 ))
 ```
 
+## GC-MS Correction RRF\<1
+
+This simulation assumes that we know the true RRF of all compounds
+sampled and therefore performing the conditional correction. We also
+force the UF to be positive by removing low and high responders.
+
+``` r
+## RSD is calculated only for RRFs between 0.05 and 1 
+## 'Compounds with RRF lower than 0.05 are excluded from UF calculation (20 times lower than the internal standard).page 8
+## Therefore, as a criterion for RRF selection, only compounds with an RRF less than 1 are actually considered for UF calculation. page 8
+
+rsd <- function(x) {
+  x_use = x[x<=1&x>0.05]
+  return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
+}
+
+## Simulation starts
+set.seed(123)
+N_sim <- 10000
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+# remove 0 values
+RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+# Apply Part 18 formula for database
+UF <- 1/(1-rsd(RRF_GCMS_superior0))
+
+
+# Start simulation
+for (i in 1:N_sim) {
+
+## 1) Concentration around the AET
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
+## A) Sampling from the GC/MS dataset (5µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+## IV) RRflow condition
+## add a normal / lognormal distribution to get a "exp" RRF with some variability e.g 30%
+exp_RRF <- simulated_RRF * rnorm(n = N_extractables, 1, 0.3)
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
+condition <- (simulated_RRF < 1)  # Condition only for LOW responders
+corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
+
+  is_above_threshold <- base_conc_sim > AET
+  reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- rbind(summary_table, data.frame(
+  Method = "RRF<1",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
+  precision = precision,
+  recall = recall,
+  F1 = F1,
+  f_betal = f_beta
+))
+```
+
 ``` r
 UF
 ```
@@ -672,24 +754,26 @@ UF
 summary_table
 ```
 
-                 Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1     No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
-    2            UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
-    3            UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
-    4            UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
-    5           UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
-    6          UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
-    7 Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
-    8            RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
-         recall        F1   f_betal
-    1 0.1852815 0.3057258 0.1910719
-    2 0.3724966 0.5089516 0.3803407
-    3 0.5658196 0.6458962 0.5712676
-    4 0.6174105 0.6731484 0.6213682
-    5 0.7198468 0.7094388 0.7190354
-    6 0.0000000       NaN       NaN
-    7 0.7721758 0.7160955 0.7675520
-    8 1.0000000 0.9355424 0.9947280
+                      Method    FN_Rate    FP_Rate        FN_SD        FP_SD
+    1          No Correction 0.81471850 0.05370723 0.0005318166 0.0004368801
+    2                 UF (2) 0.62750341 0.18296736 0.0006617763 0.0007492723
+    3                 UF (4) 0.43418039 0.37196468 0.0006788430 0.0009355552
+    4                 UF (5) 0.38258952 0.43369280 0.0006655807 0.0009594883
+    5                UF (10) 0.28015318 0.61769860 0.0006151340 0.0009403829
+    6               UF (RSD) 1.00000000 0.00000000 0.0000000000 0.0000000000
+    7 Mean/Percentile (16th) 0.27179455 0.67009167 0.0006089608 0.0009111648
+    8                 RRFlow 0.08499027 0.43822916 0.0004047202 0.0010162527
+    9                  RRF<1 0.10674387 0.31227110 0.0004481433 0.0009491744
+      precision    recall        F1   f_betal
+    1 0.8736549 0.1852815 0.3057258 0.1910719
+    2 0.8031754 0.3724966 0.5089516 0.3803407
+    3 0.7523746 0.5658196 0.6458962 0.5712676
+    4 0.7399487 0.6174105 0.6731484 0.6213682
+    5 0.6993274 0.7198468 0.7094388 0.7190354
+    6       NaN 0.0000000       NaN       NaN
+    7 0.6853586 0.7282055 0.7061326 0.7264587
+    8 0.8061509 0.9150097 0.8571378 0.9102820
+    9 0.8506870 0.8932561 0.8714520 0.8915402
 
 ## GC-MS Correction percentile 10th
 
@@ -715,12 +799,12 @@ for (i in 1:N_sim) {
 
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+## A) Sampling from the GC/MS dataset (5µg/mL)
 simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
-## V RRF < 1
+## V 
 
 exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
-corrected_conc <- exp_conc / conservative_RRF_estimate 
+corrected_conc <- exp_conc / conservative_RRF_estimate ## need to find rationale
 
 is_above_threshold <- base_conc_sim > AET
 reported_above_threshold <- corrected_conc > AET
@@ -760,194 +844,132 @@ summary_table <- rbind(summary_table, data.frame(
 ))
 ```
 
-``` r
-summary_table
-```
+## GC-MS Correction percentile 20th
 
-                 Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1     No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
-    2            UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
-    3            UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
-    4            UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
-    5           UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
-    6          UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
-    7 Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
-    8            RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
-    9   Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
-         recall        F1   f_betal
-    1 0.1852815 0.3057258 0.1910719
-    2 0.3724966 0.5089516 0.3803407
-    3 0.5658196 0.6458962 0.5712676
-    4 0.6174105 0.6731484 0.6213682
-    5 0.7198468 0.7094388 0.7190354
-    6 0.0000000       NaN       NaN
-    7 0.7721758 0.7160955 0.7675520
-    8 1.0000000 0.9355424 0.9947280
-    9 0.8914343 0.7632590 0.8800658
-
-## Optimised percentile
-
-Here we find the best percentile to divide to target a recall of 95%
-(which is also arbitrary)
+Here we divide by the 20th percentile (which is arbitrary) assuming to
+capture the left hand side of the RRF database (low responders)
 
 ``` r
 set.seed(123)
-
-target_recall <- 0.95
-found <- FALSE
-optimal_percentile <- NA
-
 N_sim <- 10000
 N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
-for (test_percentile in seq(0.50, 0.01, by = -0.01)) {
-  
-  conservative_RRF_estimate <- quantile(RRF_GCMS_superior0, test_percentile, na.rm=TRUE)
-  
-  total_FN <- 0
-  total_FP <- 0
-  total_TP <- 0
-  total_TN <- 0
+conservative_RRF_estimate <- quantile(gcms_clap_clean$"5 µg/mL", 0.20)
 
-  for (i in 1:N_sim) {
-    base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-    simulated_RRF <- sample(RRF_GCMS_superior0, size = N_extractables, replace = FALSE)
-    
-    exp_conc <- base_conc_sim * simulated_RRF   
+for (i in 1:N_sim) {
 
-    corrected_conc <- exp_conc / conservative_RRF_estimate 
+## 1) Concentration around the AET
+base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
+## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"5 µg/mL", size = N_extractables, replace = FALSE)
+## V 
 
-    is_above_threshold <- base_conc_sim > AET
-    reported_above_threshold <- corrected_conc > AET
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc / conservative_RRF_estimate ## need to find rationale
 
-    total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-    total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-    total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-    total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+is_above_threshold <- base_conc_sim > AET
+reported_above_threshold <- corrected_conc > AET
+
+  total_FN <- total_FN + sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  total_FP <- total_FP + sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TP <- total_TP + sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
+  total_TN <- total_TN + sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
 }
 
-  # Calculate Recall (Sensitivity)
-  # Denominator: All Truly Toxic (TP + FN)
-  current_recall <- total_TP / (total_TP + total_FN)
-  
-  print(paste("Percentile:", test_percentile, "-> Recall:", round(current_recall, 4))) 
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
 
-  if(current_recall >= target_recall) {
-    optimal_percentile <- test_percentile
-    found <- TRUE
-    break  
-  }
-}
-```
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
 
-    [1] "Percentile: 0.5 -> Recall: 0.6074"
-    [1] "Percentile: 0.49 -> Recall: 0.6107"
-    [1] "Percentile: 0.48 -> Recall: 0.6186"
-    [1] "Percentile: 0.47 -> Recall: 0.6288"
-    [1] "Percentile: 0.46 -> Recall: 0.664"
-    [1] "Percentile: 0.45 -> Recall: 0.6798"
-    [1] "Percentile: 0.44 -> Recall: 0.6841"
-    [1] "Percentile: 0.43 -> Recall: 0.6879"
-    [1] "Percentile: 0.42 -> Recall: 0.6985"
-    [1] "Percentile: 0.41 -> Recall: 0.707"
-    [1] "Percentile: 0.4 -> Recall: 0.7139"
-    [1] "Percentile: 0.39 -> Recall: 0.7195"
-    [1] "Percentile: 0.38 -> Recall: 0.7221"
-    [1] "Percentile: 0.37 -> Recall: 0.7259"
-    [1] "Percentile: 0.36 -> Recall: 0.7273"
-    [1] "Percentile: 0.35 -> Recall: 0.7318"
-    [1] "Percentile: 0.34 -> Recall: 0.739"
-    [1] "Percentile: 0.33 -> Recall: 0.7509"
-    [1] "Percentile: 0.32 -> Recall: 0.7667"
-    [1] "Percentile: 0.31 -> Recall: 0.7673"
-    [1] "Percentile: 0.3 -> Recall: 0.7687"
-    [1] "Percentile: 0.29 -> Recall: 0.7725"
-    [1] "Percentile: 0.28 -> Recall: 0.7778"
-    [1] "Percentile: 0.27 -> Recall: 0.7907"
-    [1] "Percentile: 0.26 -> Recall: 0.8016"
-    [1] "Percentile: 0.25 -> Recall: 0.8039"
-    [1] "Percentile: 0.24 -> Recall: 0.8053"
-    [1] "Percentile: 0.23 -> Recall: 0.8067"
-    [1] "Percentile: 0.22 -> Recall: 0.8086"
-    [1] "Percentile: 0.21 -> Recall: 0.8119"
-    [1] "Percentile: 0.2 -> Recall: 0.8138"
-    [1] "Percentile: 0.19 -> Recall: 0.8182"
-    [1] "Percentile: 0.18 -> Recall: 0.829"
-    [1] "Percentile: 0.17 -> Recall: 0.8411"
-    [1] "Percentile: 0.16 -> Recall: 0.847"
-    [1] "Percentile: 0.15 -> Recall: 0.8566"
-    [1] "Percentile: 0.14 -> Recall: 0.8631"
-    [1] "Percentile: 0.13 -> Recall: 0.8658"
-    [1] "Percentile: 0.12 -> Recall: 1"
 
-``` r
-if(found) {
-  print(paste("Optimal Percentile for 95% Recall:", optimal_percentile))
-  
-  count_Above_AET <- total_TP + total_FN
-  count_Below_AET  <- total_TN + total_FP
-  
-  FN_Rate_final <- total_FN / count_Above_AET
-  FP_Rate_final <- total_FP / count_Below_AET
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 
-  recall <- total_TP / count_Above_AET
-  precision <- total_TP / (total_TP + total_FP)
-  
-  F1 <- (2 * precision * recall / (precision + recall))
-  beta <- 5
-  f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
-
-  SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-  summary_table <- rbind(summary_table, data.frame(
-    Method = paste0("Optimized_P"),
-    FN_Rate = FN_Rate_final,
-    FP_Rate = FP_Rate_final,
-    FN_SD = SD_FN,
-    FP_SD = SD_FP,
-    precision = precision,
-    recall = recall,
-    F1 = F1,
-    f_betal = f_beta 
-  ))
-  
-} else {
-  print("1st percentile was not conservative enough to reach 95% recall.")
-}
+summary_table <- rbind(summary_table, data.frame(
+  Method = "Percentile 20th",
+  FN_Rate = FN_Rate_final,
+  FP_Rate = FP_Rate_final,
+  FN_SD = SD_FN,
+  FP_SD = SD_FP,
+  precision = precision,
+  recall = recall,
+  F1 = F1,
+  f_betal = f_beta
+))
 ```
-
-    [1] "Optimal Percentile for 95% Recall: 0.12"
 
 ``` r
 summary_table
 ```
 
-                  Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1      No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
-    2             UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
-    3             UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
-    4             UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
-    5            UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
-    6           UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
-    7  Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
-    8             RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
-    9    Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
-    10       Optimized_P 0.0000000 0.86558377 0.0000000000 0.0006609626 0.6983468
-          recall        F1   f_betal
-    1  0.1852815 0.3057258 0.1910719
-    2  0.3724966 0.5089516 0.3803407
-    3  0.5658196 0.6458962 0.5712676
-    4  0.6174105 0.6731484 0.6213682
-    5  0.7198468 0.7094388 0.7190354
-    6  0.0000000       NaN       NaN
-    7  0.7721758 0.7160955 0.7675520
-    8  1.0000000 0.9355424 0.9947280
-    9  0.8914343 0.7632590 0.8800658
-    10 1.0000000 0.8223842 0.9836579
+                       Method    FN_Rate    FP_Rate        FN_SD        FP_SD
+    1           No Correction 0.81471850 0.05370723 0.0005318166 0.0004368801
+    2                  UF (2) 0.62750341 0.18296736 0.0006617763 0.0007492723
+    3                  UF (4) 0.43418039 0.37196468 0.0006788430 0.0009355552
+    4                  UF (5) 0.38258952 0.43369280 0.0006655807 0.0009594883
+    5                 UF (10) 0.28015318 0.61769860 0.0006151340 0.0009403829
+    6                UF (RSD) 1.00000000 0.00000000 0.0000000000 0.0000000000
+    7  Mean/Percentile (16th) 0.27179455 0.67009167 0.0006089608 0.0009111648
+    8                  RRFlow 0.08499027 0.43822916 0.0004047202 0.0010162527
+    9                   RRF<1 0.10674387 0.31227110 0.0004481433 0.0009491744
+    10        Percentile 10th 0.10856568 0.89080919 0.0004258268 0.0006043918
+    11        Percentile 20th 0.10856568 0.77062608 0.0004258268 0.0008147550
+       precision    recall        F1   f_betal
+    1  0.8736549 0.1852815 0.3057258 0.1910719
+    2  0.8031754 0.3724966 0.5089516 0.3803407
+    3  0.7523746 0.5658196 0.6458962 0.5712676
+    4  0.7399487 0.6174105 0.6731484 0.6213682
+    5  0.6993274 0.7198468 0.7094388 0.7190354
+    6        NaN 0.0000000       NaN       NaN
+    7  0.6853586 0.7282055 0.7061326 0.7264587
+    8  0.8061509 0.9150097 0.8571378 0.9102820
+    9  0.8506870 0.8932561 0.8714520 0.8915402
+    10 0.6673095 0.8914343 0.7632590 0.8800658
+    11 0.6986691 0.8914343 0.7833674 0.8820740
+
+``` r
+print(summary_table)
+```
+
+                       Method    FN_Rate    FP_Rate        FN_SD        FP_SD
+    1           No Correction 0.81471850 0.05370723 0.0005318166 0.0004368801
+    2                  UF (2) 0.62750341 0.18296736 0.0006617763 0.0007492723
+    3                  UF (4) 0.43418039 0.37196468 0.0006788430 0.0009355552
+    4                  UF (5) 0.38258952 0.43369280 0.0006655807 0.0009594883
+    5                 UF (10) 0.28015318 0.61769860 0.0006151340 0.0009403829
+    6                UF (RSD) 1.00000000 0.00000000 0.0000000000 0.0000000000
+    7  Mean/Percentile (16th) 0.27179455 0.67009167 0.0006089608 0.0009111648
+    8                  RRFlow 0.08499027 0.43822916 0.0004047202 0.0010162527
+    9                   RRF<1 0.10674387 0.31227110 0.0004481433 0.0009491744
+    10        Percentile 10th 0.10856568 0.89080919 0.0004258268 0.0006043918
+    11        Percentile 20th 0.10856568 0.77062608 0.0004258268 0.0008147550
+       precision    recall        F1   f_betal
+    1  0.8736549 0.1852815 0.3057258 0.1910719
+    2  0.8031754 0.3724966 0.5089516 0.3803407
+    3  0.7523746 0.5658196 0.6458962 0.5712676
+    4  0.7399487 0.6174105 0.6731484 0.6213682
+    5  0.6993274 0.7198468 0.7094388 0.7190354
+    6        NaN 0.0000000       NaN       NaN
+    7  0.6853586 0.7282055 0.7061326 0.7264587
+    8  0.8061509 0.9150097 0.8571378 0.9102820
+    9  0.8506870 0.8932561 0.8714520 0.8915402
+    10 0.6673095 0.8914343 0.7632590 0.8800658
+    11 0.6986691 0.8914343 0.7833674 0.8820740
 
 ## Machine Learning
 
@@ -1053,32 +1075,34 @@ summary_table <- rbind(summary_table, data.frame(
 summary_table
 ```
 
-                  Method   FN_Rate    FP_Rate        FN_SD        FP_SD precision
-    1      No Correction 0.8147185 0.05370723 0.0005318166 0.0004368801 0.8736549
-    2             UF (2) 0.6275034 0.18296736 0.0006617763 0.0007492723 0.8031754
-    3             UF (4) 0.4341804 0.37196468 0.0006788430 0.0009355552 0.7523746
-    4             UF (5) 0.3825895 0.43369280 0.0006655807 0.0009594883 0.7399487
-    5            UF (10) 0.2801532 0.61769860 0.0006151340 0.0009403829 0.6993274
-    6           UF (RSD) 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
-    7  Percentile (16th) 0.2278242 0.77059228 0.0005741165 0.0008147972 0.6676095
-    8             RRFlow 0.0000000 0.27639312 0.0000000000 0.0009182391 0.8788913
-    9    Percentile 10th 0.1085657 0.89080919 0.0004258268 0.0006043918 0.6673095
-    10       Optimized_P 0.0000000 0.86558377 0.0000000000 0.0006609626 0.6983468
-    11  Machine Learning 1.0000000 0.00000000 0.0000000000 0.0000000000       NaN
-          recall        F1   f_betal
-    1  0.1852815 0.3057258 0.1910719
-    2  0.3724966 0.5089516 0.3803407
-    3  0.5658196 0.6458962 0.5712676
-    4  0.6174105 0.6731484 0.6213682
-    5  0.7198468 0.7094388 0.7190354
-    6  0.0000000       NaN       NaN
-    7  0.7721758 0.7160955 0.7675520
-    8  1.0000000 0.9355424 0.9947280
-    9  0.8914343 0.7632590 0.8800658
-    10 1.0000000 0.8223842 0.9836579
-    11 0.0000000       NaN       NaN
+                       Method    FN_Rate    FP_Rate        FN_SD        FP_SD
+    1           No Correction 0.81471850 0.05370723 0.0005318166 0.0004368801
+    2                  UF (2) 0.62750341 0.18296736 0.0006617763 0.0007492723
+    3                  UF (4) 0.43418039 0.37196468 0.0006788430 0.0009355552
+    4                  UF (5) 0.38258952 0.43369280 0.0006655807 0.0009594883
+    5                 UF (10) 0.28015318 0.61769860 0.0006151340 0.0009403829
+    6                UF (RSD) 1.00000000 0.00000000 0.0000000000 0.0000000000
+    7  Mean/Percentile (16th) 0.27179455 0.67009167 0.0006089608 0.0009111648
+    8                  RRFlow 0.08499027 0.43822916 0.0004047202 0.0010162527
+    9                   RRF<1 0.10674387 0.31227110 0.0004481433 0.0009491744
+    10        Percentile 10th 0.10856568 0.89080919 0.0004258268 0.0006043918
+    11        Percentile 20th 0.10856568 0.77062608 0.0004258268 0.0008147550
+    12       Machine Learning 1.00000000 0.00000000 0.0000000000 0.0000000000
+       precision    recall        F1   f_betal
+    1  0.8736549 0.1852815 0.3057258 0.1910719
+    2  0.8031754 0.3724966 0.5089516 0.3803407
+    3  0.7523746 0.5658196 0.6458962 0.5712676
+    4  0.7399487 0.6174105 0.6731484 0.6213682
+    5  0.6993274 0.7198468 0.7094388 0.7190354
+    6        NaN 0.0000000       NaN       NaN
+    7  0.6853586 0.7282055 0.7061326 0.7264587
+    8  0.8061509 0.9150097 0.8571378 0.9102820
+    9  0.8506870 0.8932561 0.8714520 0.8915402
+    10 0.6673095 0.8914343 0.7632590 0.8800658
+    11 0.6986691 0.8914343 0.7833674 0.8820740
+    12       NaN 0.0000000       NaN       NaN
 
-## Comparison
+# Comparisons
 
 ``` r
 plot_data <- summary_table %>%
@@ -1095,11 +1119,12 @@ method_levels <- c(
   "UF (5)", 
   "UF (10)",  
   "UF (RSD)",
-  "Percentile (16th)", 
+  "Mean/Percentile (16th)", 
   "RRFlow",
+  "RRF<1",
   "Percentile 10th",
-  "Machine Learning",
-  "Optimized_P")
+  "Percentile 20th",
+  "Machine Learning")
 
 plot_data$Method <- factor(plot_data$Method, levels = method_levels)
 
@@ -1123,24 +1148,33 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
 ![](GC_MS_5_1A_files/figure-commonmark/unnamed-chunk-28-1.png)
 
 ``` r
-summary_table %>%
+summary_FN <- summary_table %>%
+  mutate(
+    precision = round(precision, 2),
+    recall = round(recall, 2),
+    F1 = round(F1, 2),
+    f_betal = round(f_betal, 2)
+  ) %>%
   select(Method, precision, recall, F1, f_betal)
+
+print(summary_FN)
 ```
 
-                  Method precision    recall        F1   f_betal
-    1      No Correction 0.8736549 0.1852815 0.3057258 0.1910719
-    2             UF (2) 0.8031754 0.3724966 0.5089516 0.3803407
-    3             UF (4) 0.7523746 0.5658196 0.6458962 0.5712676
-    4             UF (5) 0.7399487 0.6174105 0.6731484 0.6213682
-    5            UF (10) 0.6993274 0.7198468 0.7094388 0.7190354
-    6           UF (RSD)       NaN 0.0000000       NaN       NaN
-    7  Percentile (16th) 0.6676095 0.7721758 0.7160955 0.7675520
-    8             RRFlow 0.8788913 1.0000000 0.9355424 0.9947280
-    9    Percentile 10th 0.6673095 0.8914343 0.7632590 0.8800658
-    10       Optimized_P 0.6983468 1.0000000 0.8223842 0.9836579
-    11  Machine Learning       NaN 0.0000000       NaN       NaN
+                       Method precision recall   F1 f_betal
+    1           No Correction      0.87   0.19 0.31    0.19
+    2                  UF (2)      0.80   0.37 0.51    0.38
+    3                  UF (4)      0.75   0.57 0.65    0.57
+    4                  UF (5)      0.74   0.62 0.67    0.62
+    5                 UF (10)      0.70   0.72 0.71    0.72
+    6                UF (RSD)       NaN   0.00  NaN     NaN
+    7  Mean/Percentile (16th)      0.69   0.73 0.71    0.73
+    8                  RRFlow      0.81   0.92 0.86    0.91
+    9                   RRF<1      0.85   0.89 0.87    0.89
+    10        Percentile 10th      0.67   0.89 0.76    0.88
+    11        Percentile 20th      0.70   0.89 0.78    0.88
+    12       Machine Learning       NaN   0.00  NaN     NaN
 
-ROC and Precision Recall plots
+# ROC and Precision Recall plots
 
 ``` r
 ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
