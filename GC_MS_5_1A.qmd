@@ -743,7 +743,7 @@ summary_table
 ```
 
 ```{r}
-summary_table
+print(summary_table)
 ```
 
 ## Machine Learning
@@ -877,8 +877,16 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
 ```
 
 ```{r}
-summary_table %>%
+summary_FN <- summary_table %>%
+  mutate(
+    precision = round(precision, 2),
+    recall = round(recall, 2),
+    F1 = round(F1, 2),
+    f_betal = round(f_betal, 2)
+  ) %>%
   select(Method, precision, recall, F1, f_betal)
+
+print(summary_FN)
 ```
 
 # ROC and Precision Recall plots
@@ -903,5 +911,3 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
   theme_minimal()
 
 ```
-
-
