@@ -244,7 +244,7 @@ hist(lcmsneg_clap_clean$"20 µg/mL",
 ## Define AET
 
 ``` r
-AET <- 0.2
+AET <- 5
 ```
 
 ## Uniform distribution
