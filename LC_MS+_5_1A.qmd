@@ -12,10 +12,12 @@ Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
 
 # Load required packages
 library(tidyverse)
+library(MASS)
 library(dplyr)
 library(purrr)
 library(lubridate)
 library(ggplot2)
+library(ggrepel)
 library(here)
 library(parallel)
 library(pdftools)
@@ -180,6 +182,76 @@ RRF_lnorm[RRF_lnorm<0] <- 0.001 # avoiding negative numbers
 hist(RRF_lnorm)
 ```
 
+# Fit the distribution with fitdistr
+
+```{r}
+set.seed(123)
+
+RRF_superior0 <- lcmsneg_clap_clean$"5 µg/mL"
+RRF_superior0 <- RRF_superior0[RRF_superior0 > 0]
+fit_normal <- fitdistr(RRF_superior0, "normal")
+print(fit_normal)
+fit_lognormal <- fitdistr(RRF_superior0, "lognormal")
+print(fit_lognormal)
+fit_gamma <- fitdistr(RRF_superior0, "gamma")
+print(fit_gamma)
+
+```
+```{r}
+RRF_df <- data.frame(RRF = RRF_superior0)
+
+norm_mean <- fit_normal$estimate["mean"]
+norm_sd   <- fit_normal$estimate["sd"]
+lnorm_meanlog <- fit_lognormal$estimate["meanlog"]
+lnorm_sdlog   <- fit_lognormal$estimate["sdlog"]
+gamma_shape <- fit_gamma$estimate["shape"]
+gamma_rate  <- fit_gamma$estimate["rate"]
+
+
+ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), 
+                 bins = 20, 
+                 fill = "lightgray", 
+                 color = "white") +
+  stat_function(fun = dnorm, 
+                args = list(mean = norm_mean, sd = norm_sd),
+                aes(color = "Normal", linetype = "Normal"), 
+                linewidth = 1) +
+  stat_function(fun = dlnorm, 
+                args = list(meanlog = lnorm_meanlog, sdlog = lnorm_sdlog),
+                aes(color = "Log-normal", linetype = "Log-normal"), 
+                linewidth = 1) +
+  stat_function(fun = dgamma, 
+                args = list(shape = gamma_shape, rate = gamma_rate),
+                aes(color = "Gamma", linetype = "Gamma"), 
+                linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                     values = c("Normal" = "darkblue", 
+                                "Log-normal" = "darkred", 
+                                "Gamma" = "darkgreen")) +
+  scale_linetype_manual(name = "Distribution",
+                        values = c("Normal" = "solid", 
+                                   "Log-normal" = "dashed", 
+                                   "Gamma" = "dotted")) +
+  labs(title = "Fit Comparison: Normal, Log-normal, and Gamma",
+       x = "RRF",
+       y = "Density") +
+  theme_minimal()
+
+```
+```{r}
+aic_normal <- AIC(fit_normal)
+aic_lognormal <- AIC(fit_lognormal)
+aic_gamma <- AIC(fit_gamma)
+
+aic_normal
+aic_lognormal
+aic_gamma
+```
+
+
+
+
 # Scenario with uniform distribution & GC/MS data from US FDA CLAP list
 
 ## Initialisation of the comparison table
@@ -212,6 +284,8 @@ total_TP <- 0
 total_TN <- 0
 dist_f1 <- numeric(N_sim)
 dist_f5 <- numeric(N_sim)
+dist_fnr <- numeric(N_sim)
+dist_fpr <- numeric(N_sim)
 beta <- 5
 
 
@@ -240,6 +314,15 @@ reported_above_threshold <- corrected_conc > AET
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
   
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
@@ -286,7 +369,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "No Correction",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -364,6 +449,15 @@ simulated_RRF <- sample(lcmspos_clap_clean$"5 µg/mL", size = N_extractables, re
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -411,7 +505,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = m_name,
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -474,6 +570,15 @@ reported_above_threshold <- corrected_conc > AET
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -520,7 +625,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "Mean/Percentile (16th)",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -592,6 +699,15 @@ corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average 
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -637,7 +753,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "RRFlow",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -709,6 +827,15 @@ corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average 
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -754,7 +881,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "RRF<1",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -813,6 +942,15 @@ reported_above_threshold <- corrected_conc > AET
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -859,7 +997,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "Percentile 10th",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -913,6 +1053,15 @@ reported_above_threshold <- corrected_conc > AET
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
   
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
     (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
@@ -959,7 +1108,9 @@ summary_table <- rbind(summary_table, data.frame(
 metrics_df <- data.frame(
   Method = "Percentile 20th",
   F1 = dist_f1,
-  F5 = dist_f5
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -990,8 +1141,7 @@ method_levels <- c(
   "RRFlow",
   "RRF<1",
   "Percentile 10th",
-  "Percentile 20th",
-  "Machine Learning")
+  "Percentile 20th")
 
 plot_data$Method <- factor(plot_data$Method, levels = method_levels)
 
@@ -1011,6 +1161,79 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
   theme_minimal() +
   coord_flip()
 
+```
+
+# FP vs FN
+
+```{r}
+plot_data_FN_FP <- pivot_longer(all_distributions, 
+                          cols = c("F5", "Percent_FN", "Percent_FP"), 
+                          names_to = "Metric", 
+                          values_to = "Value")
+
+plot_data_FN_FP$Method <- factor(plot_data_FN_FP$Method, levels = method_levels)
+
+```
+
+```{r}
+cluster_centers <- all_distributions %>%
+  group_by(Method) %>%
+  summarize(
+    center_FP = mean(Percent_FP, na.rm = TRUE),
+    center_FN = mean(Percent_FN, na.rm = TRUE)
+  )
+
+ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
+  # Plot the individual simulation dots
+  geom_point(alpha = 0.05, size = 1) +
+  
+  # Draw the 95% confidence ellipses
+  stat_ellipse(linewidth = 1, linetype = 1, type = "norm", level = 0.95) +
+  
+  geom_label_repel(
+    data = cluster_centers, 
+    aes(x = center_FP, y = center_FN, label = Method), 
+    size = 4,
+    fontface = "bold",
+    alpha = 0.9,
+    show.legend = FALSE,
+    box.padding = 0.5,         # Adds "repel force" around the label itself
+    point.padding = 0.5,       # Keeps the label from sitting directly on the exact center coordinate
+    segment.color = "black",   # Makes the pointer line black so it stands out
+    segment.size = 0.8         # Makes the pointer line a bit thicker
+  ) +
+  
+  # Clean up the labels and aesthetics
+  labs(
+    title = "Trade-off: False Positives vs. False Negatives",
+    subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+    x = "False Positive Rate (%)",
+    y = "False Negative Rate (%)",
+    color = "Correction Method"
+  ) +
+  
+  # Clean theme
+  theme_minimal() +
+  theme(
+    # Optional: If you want to remove the legend entirely now that you have labels, 
+    # change "bottom" to "none"!
+    legend.position = "none", 
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r}
+metrics_distributions <- all_distributions %>%
+  group_by(Method) %>%
+  summarise(
+    Mean_F1 = mean(F1, na.rm = TRUE), 
+    SD_F1 = sd(F1, na.rm = TRUE),
+    Mean_F5 = mean(F5, na.rm = TRUE),
+    SD_F5 = sd(F5, na.rm = TRUE)
+  )
+
+print(metrics_distributions)
 ```
 
 ```{r}
