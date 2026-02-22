@@ -7,13 +7,11 @@ editor: visual
 # Libraries
 
 ```{r}
-Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
-
+#Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
 #install.packages("tabulapdf")
 
 # Load required packages
 library(tidyverse)
-library(MASS)
 library(dplyr)
 library(purrr)
 library(lubridate)
@@ -21,14 +19,22 @@ library(ggplot2)
 library(ggrepel)
 library(here)
 library(parallel)
-library(pdftools)
 library(stringr)
-library(rJava)
-library(tabulapdf) # for data tables extraction
 library(readxl)
 library(reticulate)
+library(MASS)
 #py_install(c("pandas", "joblib", "scikit-learn"))
 
+```
+
+```{r}
+#| include: false
+# Set global plot settings for PNG output on Linux
+knitr::opts_chunk$set(
+  dev = "png", 
+  dpi = 300, 
+  dev.args = list(type = "cairo")
+) 
 ```
 
 # Data Extraction
@@ -129,7 +135,7 @@ hist(lcmsneg_clap_clean$"20 µg/mL",
 ## Define AET
 
 ```{r}
-AET <- 5
+AET <- 1
 ```
 
 ## Uniform distribution
@@ -1172,9 +1178,9 @@ all_distributions$Method <- factor(all_distributions$Method, levels = method_lev
 ggplot(all_distributions, aes(x = Method, y = F5)) +
   geom_violin(fill = "orange", alpha = 0.6) +
   geom_boxplot(width = 0.1, color = "black", alpha = 0.5) +
-  labs(
-    title = paste0("Distribution of F5 scores | LC-MS Correction Methods", " AET=", AET, "µg/mL"),
-    subtitle = "Conc. from Custom Distribution, RRF log normal distributed") +
+    labs(
+      title = paste0("Distribution of F5 scores | ", paste0("Comparison of LC-MS Correction Methods", " AET=", AET, "µg/mL")),
+      subtitle = "Conc. from Custom Distribution, RRF log normal distributed") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
@@ -1220,15 +1226,13 @@ ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
   ) +
   
   # Clean up the labels and aesthetics
-  labs(
-    title = "Trade-off: False Positives vs. False Negatives",
-    subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
-    x = "False Positive Rate (%)",
-    y = "False Negative Rate (%)",
-    color = "Correction Method"
-  ) +
-  
-  # Clean theme
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
   theme_minimal() +
   theme(
     # Optional: If you want to remove the legend entirely now that you have labels, 
@@ -1284,6 +1288,34 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
   labs(title = "Precision/Recall",
        x = "Recall",
        y = "Precision") +
+  theme_minimal()
+
+```
+
+ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
+  geom_point(size = 4) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  xlim(0, 1) + ylim(0, 1) +
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
+  theme_minimal()
+
+ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
+  geom_point(size = 4) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + # Random guess line
+  xlim(0, 1) + ylim(0, 1) +
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
   theme_minimal()
 
 ```

@@ -6,7 +6,7 @@ format: dashboard
 # Libraries
 
 ```{r}
-Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
+#Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
 #install.packages("tabulapdf")
 
 # Load required packages
@@ -18,13 +18,22 @@ library(ggplot2)
 library(ggrepel)
 library(here)
 library(parallel)
-library(pdftools)
 library(stringr)
 library(readxl)
 library(reticulate)
 library(MASS)
 #py_install(c("pandas", "joblib", "scikit-learn"))
 
+```
+
+```{r}
+#| include: false
+# Set global plot settings for PNG output on Linux
+knitr::opts_chunk$set(
+  dev = "png", 
+  dpi = 300, 
+  dev.args = list(type = "cairo")
+) 
 ```
 
 # Data Extraction
@@ -125,7 +134,7 @@ hist(lcmsneg_clap_clean$"20 µg/mL",
 ## Define AET
 
 ```{r}
-AET <- 5
+AET <- 1
 ```
 
 ## Uniform distribution
@@ -1183,6 +1192,15 @@ reported_above_threshold <- corrected_conc > AET
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
   iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
   
   # F1
   iter_f1 <- if((iter_prec + iter_rec) > 0) {
@@ -1197,6 +1215,7 @@ reported_above_threshold <- corrected_conc > AET
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  
   
 }
 
@@ -1295,9 +1314,9 @@ all_distributions$Method <- factor(all_distributions$Method, levels = method_lev
 ggplot(all_distributions, aes(x = Method, y = F5)) +
   geom_violin(fill = "orange", alpha = 0.6) +
   geom_boxplot(width = 0.1, color = "black", alpha = 0.5) +
-  labs(
-    title = paste0("Distribution of F5 scores | GC-MS Correction Methods (5 µg/mL)", " AET=", AET, "µg/mL"),
-    subtitle = "Conc. Uniform distribution (around AET), RRF sampled from CLAP list data") +
+    labs(
+      title = paste0("Distribution of F5 scores | ", paste0("Comparison of GC-MS Correction Methods (5 µg/mL)", " AET=", AET, "µg/mL")),
+      subtitle = "Conc. Uniform distribution (around AET), RRF sampled from CLAP list data") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
@@ -1340,16 +1359,13 @@ ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
     segment.color = "black",   # Makes the pointer line black so it stands out
     segment.size = 0.8         # Makes the pointer line a bit thicker
   ) +
-  
-  labs(
-    title = "Trade-off: False Positives vs. False Negatives",
-    subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
-    x = "False Positive Rate (%)",
-    y = "False Negative Rate (%)",
-    color = "Correction Method"
-  ) +
-  
-  # Clean theme
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
   theme_minimal() +
   theme(
     legend.position = "none", 
@@ -1406,6 +1422,34 @@ ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
   labs(title = "Precision/Recall",
        x = "Recall",
        y = "Precision") +
+  theme_minimal()
+
+```
+
+ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
+  geom_point(size = 4) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
+  xlim(0, 1) + ylim(0, 1) +
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
+  theme_minimal()
+
+ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
+  geom_point(size = 4) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + # Random guess line
+  xlim(0, 1) + ylim(0, 1) +
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
   theme_minimal()
 
 ```
