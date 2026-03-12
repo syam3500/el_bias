@@ -7,23 +7,16 @@ editor: visual
 # Libraries
 
 ```{r}
-#Sys.setenv(RETICULATE_PYTHON = "C:/Users/misak/anaconda3/python.exe")
-#install.packages("tabulapdf")
 
 # Load required packages
 library(tidyverse)
-library(dplyr)
-library(purrr)
 library(lubridate)
-library(ggplot2)
 library(ggrepel)
 library(here)
 library(parallel)
-library(stringr)
 library(readxl)
 library(reticulate)
 library(MASS)
-#py_install(c("pandas", "joblib", "scikit-learn"))
 
 ```
 
@@ -258,6 +251,46 @@ aic_lognormal
 aic_gamma
 ```
 
+```{r}
+library(patchwork)
+
+# 1. Normal Q-Q Plot
+qq_norm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,
+          dparams = list(mean = norm_mean, sd = norm_sd),
+          alpha = 0.5) +
+  stat_qq_line(distribution = qnorm,
+               dparams = list(mean = norm_mean, sd = norm_sd),
+               color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal()
+
+# 2. Log-normal Q-Q Plot
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm,
+          dparams = list(meanlog = lnorm_meanlog, sdlog = lnorm_sdlog),
+          alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm,
+               dparams = list(meanlog = lnorm_meanlog, sdlog = lnorm_sdlog),
+               color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal()
+
+# 3. Gamma Q-Q Plot
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma,
+          dparams = list(shape = gamma_shape, rate = gamma_rate),
+          alpha = 0.5) +
+  stat_qq_line(distribution = qgamma,
+               dparams = list(shape = gamma_shape, rate = gamma_rate),
+               color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_minimal()
+
+# Display them side-by-side
+qq_norm + qq_lnorm + qq_gamma
+```
+
 # Scenario with uniform distribution & GC/MS data from US FDA CLAP list
 
 ## Initialisation of the comparison table
@@ -272,7 +305,10 @@ summary_table <- data.frame(
   precision = numeric(),
   recall = numeric(),
   F1 = numeric(),
-  f_beta = numeric()
+  f_beta = numeric(),
+  Youden_Y = numeric(),
+  Bias_Q = numeric(),
+  Efficiency_EI = numeric()
 )
 all_distributions <- data.frame()
 ```
@@ -282,6 +318,22 @@ all_distributions <- data.frame()
 ```{r}
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
@@ -293,7 +345,6 @@ dist_fnr <- numeric(N_sim)
 dist_fpr <- numeric(N_sim)
 beta <- 5
 
-
 for (i in 1:N_sim) {
 ## 1) Concentration around the AET
 base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
@@ -302,19 +353,30 @@ simulated_RRF <- rnorm(N_extractables, 1, 0.2)
 ## I) No Correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-is_above_threshold <- base_conc_sim > AET
-reported_above_threshold <- corrected_conc > AET
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
 
   ## Count per iteration
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -342,6 +404,50 @@ reported_above_threshold <- corrected_conc > AET
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -359,26 +465,54 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "No Correction",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "No Correction",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF =  1
+  )
+)
 metrics_df <- data.frame(
   Method = "No Correction",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ```{r}
@@ -402,6 +536,22 @@ rsd <- function(x) {
 
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 UF_RSD <- 1/(1 - rsd(rnorm(N_extractables, 1, 0.2))) # formula from ISO 10993-18
 UF_list <- c(
   "UF (2)"   = 2, 
@@ -431,19 +581,30 @@ simulated_RRF <- rnorm(N_extractables, 1, 0.2)
   exp_conc <- (base_conc_sim * simulated_RRF)
   corrected_conc <- exp_conc * uf_val 
   
-  is_above_threshold <- base_conc_sim > AET
-  reported_above_threshold <- corrected_conc > AET
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
 
 ## Count per iteration
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -471,6 +632,50 @@ simulated_RRF <- rnorm(N_extractables, 1, 0.2)
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -488,9 +693,9 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-
-
-summary_table <- rbind(summary_table, data.frame(
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
     Method = m_name,
     FN_Rate = FN_Rate_final,
     FP_Rate = FP_Rate_final,
@@ -499,22 +704,47 @@ summary_table <- rbind(summary_table, data.frame(
     precision = precision,
     recall = recall,
     F1 = F1,
-    f_beta = f_beta
-))
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF =  uf_val
+  )
+)
 
 metrics_df <- data.frame(
   Method = m_name,
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
 }
 
-
 UF_RSD
+
 ```
 
 ```{r}
@@ -530,12 +760,27 @@ percentile <- function(x) {
 
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-
 
 meanGCMS <- mean(rnorm(N_extractables, 1, 0.2))
 percentileGCMS <- percentile(rnorm(N_extractables, 1, 0.2))
@@ -550,18 +795,29 @@ exp_conc <- (base_conc_sim * simulated_RRF)
 ## III) 16th percentile Correction
 corrected_conc <- exp_conc * (meanGCMS / percentileGCMS)
 
-is_above_threshold <- base_conc_sim > AET
-reported_above_threshold <- corrected_conc > AET
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
 
- iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+ iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -589,6 +845,50 @@ reported_above_threshold <- corrected_conc > AET
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -606,27 +906,54 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Mean/Percentile (16th)",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "Mean/Percentile (16th)",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = meanGCMS/percentileGCMS
+  )
+)
 metrics_df <- data.frame(
   Method = "Mean/Percentile (16th)",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ## GC-MS Correction RRFlow
@@ -647,6 +974,22 @@ rsd <- function(x) {
 ## Simulation starts
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
@@ -659,7 +1002,6 @@ RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
 # Apply Part 18 formula for database
 UF <- 1/(1-rsd(rnorm(N_extractables, 1, 0.2)))
-
 
 # Start simulation
 for (i in 1:N_sim) {
@@ -676,18 +1018,29 @@ corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF 
 condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2) # RRFlow conditions rescaling factor should be focused only to those compounds which exhibits RRF< 0.5 and RRF>2 
 corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
 
-  is_above_threshold <- base_conc_sim > AET
-  reported_above_threshold <- corrected_conc > AET
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
 
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -715,6 +1068,50 @@ corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average 
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -732,25 +1129,54 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "RRFlow",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "RRFlow",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = UF
+  )
+  )
+
 metrics_df <- data.frame(
   Method = "RRFlow",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ## GC-MS Correction RRF\<1
@@ -771,6 +1197,22 @@ rsd <- function(x) {
 ## Simulation starts
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
@@ -783,7 +1225,6 @@ RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
 
 # Apply Part 18 formula for database
 UF <- 1/(1-rsd(rnorm(N_extractables, 1, 0.2)))
-
 
 # Start simulation
 for (i in 1:N_sim) {
@@ -800,18 +1241,29 @@ corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF 
 condition <- (simulated_RRF < 1)  # Condition only for LOW responders
 corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
 
-  is_above_threshold <- base_conc_sim > AET
-  reported_above_threshold <- corrected_conc > AET
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
 
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -839,6 +1291,50 @@ corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average 
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -856,25 +1352,53 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "RRF<1",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "RRF<1",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = UF
+  )
+)
 metrics_df <- data.frame(
   Method = "RRF<1",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ```{r}
@@ -889,12 +1413,27 @@ Here we divide by the 10th percentile (which is arbitrary) assuming to capture t
 ```{r}
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-
 
 conservative_RRF_estimate <- quantile(rnorm(N_extractables, 1, 0.2), 0.10)
 
@@ -909,18 +1448,29 @@ simulated_RRF <- rnorm(N_extractables, 1, 0.2)
 exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
 corrected_conc <- exp_conc / conservative_RRF_estimate ## need to find rationale
 
-is_above_threshold <- base_conc_sim > AET
-reported_above_threshold <- corrected_conc > AET
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
 
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -948,6 +1498,50 @@ reported_above_threshold <- corrected_conc > AET
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -958,7 +1552,6 @@ FP_Rate_final <- total_FP / count_Below_AET
 recall <- total_TP / count_Above_AET
 precision <- total_TP / (total_TP + total_FP)
 
-
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
@@ -966,25 +1559,53 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "Percentile 10th",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Percentile 10th",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = 1/(1-rsd(rnorm(N_extractables, 1, 0.2)))
+  )
+)
 metrics_df <- data.frame(
   Method = "Percentile 10th",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ## GC-MS Correction percentile 20th
@@ -994,12 +1615,27 @@ Here we divide by the 20th percentile (which is arbitrary) assuming to capture t
 ```{r}
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
 total_TP <- 0
 total_TN <- 0
-
 
 RRF_GCMS_superior0 <- gcms_clap_clean$"5 µg/mL"
 RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
@@ -1017,18 +1653,29 @@ simulated_RRF <- rnorm(N_extractables, 1, 0.2)
 exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
 corrected_conc <- exp_conc / conservative_RRF_estimate ## need to find rationale
 
-is_above_threshold <- base_conc_sim > AET
-reported_above_threshold <- corrected_conc > AET
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
 
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -1057,6 +1704,50 @@ reported_above_threshold <- corrected_conc > AET
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
   
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -1067,7 +1758,6 @@ FP_Rate_final <- total_FP / count_Below_AET
 recall <- total_TP / count_Above_AET
 precision <- total_TP / (total_TP + total_FP)
 
-
 F1 <- (2 * precision * recall / (precision + recall))
 beta <- 5
 f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
@@ -1075,25 +1765,53 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "Percentile 20th",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Percentile 20th",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
+
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = 1 / conservative_RRF_estimate
+  )
+)
 metrics_df <- data.frame(
   Method = "Percentile 20th",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 all_distributions <- rbind(all_distributions, metrics_df)
+
 ```
 
 ```{r}
@@ -1128,6 +1846,22 @@ gc_ms <- read_csv("final_model_data.csv") %>%
 ```{r}
 set.seed(123)
 N_sim <- 10000
+dist_Y <- numeric(N_sim)
+
+dist_csi <- numeric(N_sim)
+dist_psi <- numeric(N_sim)
+dist_sui <- numeric(N_sim)
+dist_pcui <- numeric(N_sim)
+dist_ncui <- numeric(N_sim)
+dist_ActualPos <- numeric(N_sim)
+dist_ActualNeg <- numeric(N_sim)
+
+dist_EI <- numeric(N_sim)
+
+dist_Q <- numeric(N_sim)
+dist_MCC <- numeric(N_sim)
+dist_DOR <- numeric(N_sim)
+
 N_extractables <- 80
 total_FN <- 0
 total_FP <- 0
@@ -1147,18 +1881,29 @@ simulated_RRF <- py$predict_rrf_raw(sim_data)
 ## no correction
 corrected_conc <- base_conc_sim * simulated_RRF
 
-is_above_threshold <- base_conc_sim > AET
-reported_above_threshold <- corrected_conc > AET
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
 
-  iter_TP <- sum(is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FP <- sum(!is_above_threshold & reported_above_threshold, na.rm = TRUE)
-  iter_FN <- sum(is_above_threshold & !reported_above_threshold, na.rm = TRUE)
-  iter_TN <- sum(!is_above_threshold & !reported_above_threshold, na.rm = TRUE)
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
 
   total_TP <- total_TP + iter_TP
   total_FP <- total_FP + iter_FP
   total_FN <- total_FN + iter_FN
   total_TN <- total_TN + iter_TN
+
+  # Matthews Correlation Coefficient (MCC)
+  denom_MCC <- sqrt(as.numeric(iter_TP+iter_FP)*(iter_TP+iter_FN)*(iter_TN+iter_FP)*(iter_TN+iter_FN))
+  iter_MCC <- if(denom_MCC > 0) ((as.numeric(iter_TP)*iter_TN) - (as.numeric(iter_FP)*iter_FN)) / denom_MCC else 0
+  
+  # Diagnostic Odds Ratio (DOR)
+  iter_DOR <- (as.numeric(iter_TP) * iter_TN) / ((as.numeric(iter_FP) * iter_FN) + 1e-6)
+  
+  dist_MCC[i] <- iter_MCC
+  dist_DOR[i] <- iter_DOR
+
 
   # metrics per iterations
   iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
@@ -1186,6 +1931,50 @@ reported_above_threshold <- corrected_conc > AET
   
   dist_f1[i]   <- iter_f1
   dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+
+  # Larner's Metrics
+  iter_Y    <- iter_rec + iter_spec - 1 # Youden Index
+  iter_UAcc <- (iter_rec + iter_spec) / 2 # Unbiased Accuracy
+  iter_Q    <- (iter_TP + iter_FP) / iter_Total # Bias / Positive Sign Rate
+  iter_EI   <- (iter_TP + iter_TN - (iter_FP + iter_FN)) / iter_Total # Efficiency Index
+
+  dist_Y[i]  <- iter_Y
+  dist_EI[i] <- iter_EI
+  dist_Q[i]  <- iter_Q
+
+  # --- Calculation of Larner's Metrics (add inside the simulation loop) ---
+
+  # Pre-calculate base probabilities for indices
+  iter_Sens <- if(iter_ActualPos > 0) iter_TP / iter_ActualPos else 0
+  iter_Spec <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0
+  iter_PPV  <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_NPV  <- if((iter_TN + iter_FN) > 0) iter_TN / (iter_TN + iter_FN) else 0
+
+  # 1. Critical Success Index (CSI) - Ignores True Negatives
+  iter_CSI <- if((iter_TP + iter_FN + iter_FP) > 0) {
+    iter_TP / (iter_TP + iter_FN + iter_FP) 
+  } else { 0 }
+
+  # 2. Predictive Summary Index (PSI) - Net gain of certainty
+  iter_PSI <- iter_PPV + iter_NPV - 1
+
+  # 3. Clinical Utility Indexes (PCUI & NCUI)
+  iter_PCUI <- iter_Sens * iter_PPV
+  iter_NCUI <- iter_Spec * iter_NPV
+
+  # 4. Summary Utility Index (SUI) - Unitary score of utility 
+  iter_SUI <- iter_PCUI + iter_NCUI
+
+  dist_csi[i] <- iter_CSI
+  dist_psi[i] <- iter_PSI
+  dist_sui[i] <- iter_SUI
+  dist_pcui[i] <- iter_PCUI
+  dist_ncui[i] <- iter_NCUI
+  dist_ActualPos[i] <- iter_ActualPos
+  dist_ActualNeg[i] <- iter_ActualNeg
 }
 
 count_Above_AET <- total_TP + total_FN
@@ -1203,25 +1992,51 @@ f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
 SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
 SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
 
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Machine Learning",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    Youden_Y = mean(dist_Y, na.rm = TRUE),
+    Bias_Q = mean(dist_Q, na.rm = TRUE),
+    Efficiency_EI = mean(dist_EI, na.rm = TRUE),
+    
+    # New Larner Metrics
+    CSI = mean(dist_csi, na.rm = TRUE),
+    PSI = mean(dist_psi, na.rm = TRUE),
+    SUI = mean(dist_sui, na.rm = TRUE),
+    PCUI = mean(dist_pcui, na.rm = TRUE),
+    NCUI = mean(dist_ncui, na.rm = TRUE),
 
-summary_table <- rbind(summary_table, data.frame(
-  Method = "Machine Learning",
-  FN_Rate = FN_Rate_final,
-  FP_Rate = FP_Rate_final,
-  FN_SD = SD_FN,
-  FP_SD = SD_FP,
-  precision = precision,
-  recall = recall,
-  F1 = F1,
-  f_beta = f_beta
-))
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = 1 / conservative_RRF_estimate
+  )
+)
 
 metrics_df <- data.frame(
   Method = "Machine Learning",
   F1 = dist_f1,
   F5 = dist_f5,
   Percent_FN = dist_fnr,
-  Percent_FP = dist_fpr
+  Percent_FP = dist_fpr,
+  EI = dist_EI,
+  Youden_Y = dist_Y,
+  Bias_Q = dist_Q,
+  MCC = dist_MCC,
+  DOR = dist_DOR
 )
 
 all_distributions <- rbind(all_distributions, metrics_df)
@@ -1273,6 +2088,58 @@ ggplot(plot_data, aes(x = Method, y = Rate*100, fill = Type)) +
   scale_y_continuous(limits = c(0, 100)) +
   theme_minimal() +
   coord_flip()
+
+
+
+
+# --- Larner (2024) Reliability Analysis ---
+
+# 1. MCC Boxplot (Comparison of Reliability)
+ggplot(all_distributions, aes(x = Method, y = MCC, fill = Method)) +
+  geom_boxplot(outlier.alpha = 0.1, color = "black") + 
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "white") +
+  labs(
+    title = "Matthews Correlation Coefficient (MCC) by Method",
+    subtitle = "Higher values indicate better overall classification reliability (Larner 2024)",
+    x = "Correction Method",
+    y = "MCC (Reliability Score)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 2. MCC Density Plot (Distribution Overlap)
+ggplot(all_distributions, aes(x = MCC, fill = Method)) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title = "Distribution of MCC Scores",
+    subtitle = "Comparison of classification reliability across 10,000 simulations",
+    x = "Matthews Correlation Coefficient (MCC)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# 3. DOR vs. MCC Scatter Plot (Utilizing ggrepel)
+# Create centroids for labeling
+method_centroids_larner <- all_distributions %>%
+  group_by(Method) %>%
+  summarize(mean_MCC = mean(MCC, na.rm = TRUE), 
+            mean_DOR = mean(DOR, na.rm = TRUE))
+
+ggplot(all_distributions, aes(x = log10(DOR + 1), y = MCC, color = Method)) +
+  geom_point(alpha = 0.05, size = 0.5) +
+  geom_point(data = method_centroids_larner, aes(x = log10(mean_DOR + 1), y = mean_MCC), 
+             size = 4, shape = 21, fill = "white", stroke = 1.5) +
+  geom_label_repel(data = method_centroids_larner, 
+                   aes(x = log10(mean_DOR + 1), y = mean_MCC, label = Method),
+                   size = 3, fontface = "bold", max.overlaps = Inf) +
+  labs(
+    title = "Discriminative Power (DOR) vs. Reliability (MCC)",
+    subtitle = "DOR is shown on a Log10 scale | High values in both axes represent superior RRF correction",
+    x = "Log10(Diagnostic Odds Ratio)",
+    y = "Matthews Correlation Coefficient"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
 ```
 
@@ -1328,7 +2195,8 @@ ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
     box.padding = 0.5,         # Adds "repel force" around the label itself
     point.padding = 0.5,       # Keeps the label from sitting directly on the exact center coordinate
     segment.color = "black",   # Makes the pointer line black so it stands out
-    segment.size = 0.8         # Makes the pointer line a bit thicker
+    segment.size = 0.8,        # Makes the pointer line a bit thicker
+    max.overlaps = Inf
   ) +
   
   # Clean up the labels and aesthetics
@@ -1341,7 +2209,6 @@ ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
     ) +
   theme_minimal() +
   theme(
-    # Optional: If you want to remove the legend entirely now that you have labels, 
     # change "bottom" to "none"!
     legend.position = "none", 
     panel.grid.minor = element_blank(),
@@ -1349,79 +2216,422 @@ ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
   )
 ```
 
+
 ```{r}
-metrics_distributions <- all_distributions %>%
-  group_by(Method) %>%
-  summarise(
-    Mean_F1 = mean(F1, na.rm = TRUE), 
-    SD_F1 = sd(F1, na.rm = TRUE),
-    Mean_F5 = mean(F5, na.rm = TRUE),
-    SD_F5 = sd(F5, na.rm = TRUE)
+# Subset summary_table to the five threshold/UF columns and render as PNG
+threshold_metrics_GC_MS_X_1B <- summary_table %>%
+  dplyr::select(
+    Method,
+    is_at_and_above_threshold,
+    X.is_at_and_above_threshold,
+    reported_at_and_above_threshold,
+    X.reported_at_and_above_threshold,
+    perc_is_at_and_above_threshold,
+    perc_reported_at_and_above_threshold,
+    UF
   )
 
-print(metrics_distributions)
+# Save the table as a PNG using gt
+threshold_metrics_GC_MS_X_1B
 ```
 
+# Confusion Matrices (Average over 10,000 Simulations)
+
 ```{r}
-summary_FN <- summary_table %>%
+# ── Reconstruct TP / FP / FN / TN from the cumulated counts in summary_table ──
+# Column meanings (sums over N_sim iterations):
+#   is_at_and_above_threshold        = total_TP + total_FN  (all actual positives)
+#   X.is_at_and_above_threshold      = total_TN + total_FP  (all actual negatives)
+#   reported_at_and_above_threshold  = total_TP + total_FP  (all predicted positives)
+#   X.reported_at_and_above_threshold= total_TN + total_FN  (all predicted negatives)
+
+cm_data <- summary_table %>%
   mutate(
-    precision = round(precision, 2),
-    recall = round(recall, 2),
-    F1 = round(F1, 2),
-    f_beta = round(f_beta, 2)
+    total_grand = is_at_and_above_threshold + X.is_at_and_above_threshold,
+    # Derive the four cells
+    TP = recall * is_at_and_above_threshold,          # recall = TP / ActualPos
+    FN = is_at_and_above_threshold - TP,
+    FP = reported_at_and_above_threshold - TP,
+    TN = X.is_at_and_above_threshold - FP,
+    # Convert to % of grand total per method
+    pct_TP = round(TP / total_grand * 100, 1),
+    pct_FP = round(FP / total_grand * 100, 1),
+    pct_FN = round(FN / total_grand * 100, 1),
+    pct_TN = round(TN / total_grand * 100, 1)
   ) %>%
-  select(Method, precision, recall, F1, f_beta)
+  dplyr::select(Method, pct_TP, pct_FP, pct_FN, pct_TN)
 
-print(summary_FN)
+# ── Compute per-iteration SD from all_distributions ──
+# Percent_FN = FN / ActualPos * 100  → actual_pos fraction = is_at_and_above_threshold / total_grand
+# Percent_FP = FP / ActualNeg * 100  → actual_neg fraction = X.is_at_and_above_threshold / total_grand
+cm_sd <- all_distributions %>%
+  left_join(
+    summary_table %>%
+      transmute(
+        Method,
+        total_grand_per_sim = (is_at_and_above_threshold + X.is_at_and_above_threshold) / 10000,
+        actual_pos_frac     = is_at_and_above_threshold / (is_at_and_above_threshold + X.is_at_and_above_threshold),
+        actual_neg_frac     = X.is_at_and_above_threshold / (is_at_and_above_threshold + X.is_at_and_above_threshold)
+      ),
+    by = "Method"
+  ) %>%
+  mutate(
+    sim_pct_FN = (Percent_FN / 100) * actual_pos_frac * 100,
+    sim_pct_FP = (Percent_FP / 100) * actual_neg_frac * 100,
+    sim_pct_TP = actual_pos_frac * 100 - sim_pct_FN,
+    sim_pct_TN = actual_neg_frac * 100 - sim_pct_FP
+  ) %>%
+  group_by(Method) %>%
+  summarize(
+    sd_TP = round(sd(sim_pct_TP, na.rm = TRUE), 1),
+    sd_FP = round(sd(sim_pct_FP, na.rm = TRUE), 1),
+    sd_FN = round(sd(sim_pct_FN, na.rm = TRUE), 1),
+    sd_TN = round(sd(sim_pct_TN, na.rm = TRUE), 1)
+  )
+
+# ── Pivot to long format for ggplot ──
+cm_long <- cm_data %>%
+  pivot_longer(
+    cols = c(pct_TP, pct_FP, pct_FN, pct_TN),
+    names_to  = "Cell",
+    values_to = "Pct"
+  ) %>%
+  left_join(
+    cm_sd %>%
+      pivot_longer(
+        cols = c(sd_TP, sd_FP, sd_FN, sd_TN),
+        names_to  = "Cell_sd",
+        values_to = "SD"
+      ) %>%
+      mutate(Cell = sub("sd_", "pct_", Cell_sd)) %>%
+      dplyr::select(Method, Cell, SD),
+    by = c("Method", "Cell")
+  ) %>%
+  mutate(
+    Predicted = case_when(
+      Cell %in% c("pct_TP", "pct_FP") ~ "Predicted Positive",
+      TRUE                             ~ "Predicted Negative"
+    ),
+    Actual = case_when(
+      Cell %in% c("pct_TP", "pct_FN") ~ "True Positive",
+      TRUE                             ~ "True Negative"
+    ),
+    # Colour helper: correct cells vs error cells
+    CellType = case_when(
+      Cell == "pct_TP" ~ "TP",
+      Cell == "pct_TN" ~ "TN",
+      Cell == "pct_FP" ~ "FP",
+      Cell == "pct_FN" ~ "FN"
+    ),
+    Label = paste0(Pct, "%\n\u00b1", SD, "%")
+  ) %>%
+  mutate(
+    Predicted = factor(Predicted,
+      levels = c("Predicted Positive",
+                 "Predicted Negative")),
+    Actual = factor(Actual,
+      levels = c("True Positive",
+                 "True Negative"))
+  )
+
+cm_long$Method <- factor(cm_long$Method, levels = method_levels)
+
+# ── Plot ──
+ggplot(cm_long, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 1.2) +
+  geom_text(aes(label = Label), size = 3.8, fontface = "bold", color = "white", lineheight = 0.9) +
+  scale_fill_manual(
+    values = c(
+      "TP" = "#2E86AB",   # blue  – correct positive
+      "TN" = "#2E86AB",   # blue  – correct negative
+      "FN" = "#E84855",   # red   – false alarm
+      "FP" = "#F4A261"    # orange – missed
+    ),
+    guide = guide_legend(title = "Cell type")
+  ) +
+  facet_wrap(~ Method, ncol = 3) +
+  labs(
+    title    = "Average Confusion Matrix per Correction Method",
+    subtitle = paste0("Values are mean \u00b1 SD (%) of all ", format(10000 * 80, big.mark = ","),
+                      " compound–simulation pairs | AET = ", AET, " µg/mL"),
+    x = "Predicted class (reported concentration vs AET)",
+    y = "Actual class (true concentration vs AET)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    axis.text        = element_text(size = 9),
+    panel.grid       = element_blank(),
+    legend.position  = "bottom",
+    plot.title       = element_text(face = "bold", size = 13),
+    plot.subtitle    = element_text(size = 10, color = "grey40")
+  )
+
+cm_data
 ```
-
-# ROC and Precision Recall plots
 
 ```{r}
-ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
-  geom_point(size = 4) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
-  xlim(0, 1) + ylim(0, 1) +
-  labs(title = "ROC",
-       x = "False Positive Rate (1-Specificity)",
-       y = "Recall (Sensitivity)") +
-  theme_minimal()
+# Define number of simulations
+N_sim <- 10000
 
-ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
-  geom_point(size = 4) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + # Random guess line
-  xlim(0, 1) + ylim(0, 1) +
-  labs(title = "Precision/Recall",
-       x = "Recall",
-       y = "Precision") +
-  theme_minimal()
+# ── Reconstruct TP / FP / FN / TN and calculate averages per simulation ──
+cm_data <- summary_table %>%
+  mutate(
+    # Derive the four total cells across all simulations
+    TP = recall * is_at_and_above_threshold,          # recall = TP / ActualPos
+    FN = is_at_and_above_threshold - TP,
+    FP = reported_at_and_above_threshold - TP,
+    TN = X.is_at_and_above_threshold - FP,
 
+    # Convert to average count per simulation (out of 80)
+    # Since total instances = 80 * 10,000, dividing by 10,000 gives count out of 80
+    avg_TP = round(TP / N_sim),
+    avg_FP = round(FP / N_sim),
+    avg_FN = round(FN / N_sim),
+    avg_TN = round(TN / N_sim)
+  ) %>%
+  dplyr::select(Method, avg_TP, avg_FP, avg_FN, avg_TN)
+
+# ── Pivot to long format for ggplot ──
+cm_long <- cm_data %>%
+  pivot_longer(
+    cols = c(avg_TP, avg_FP, avg_FN, avg_TN),
+    names_to  = "Cell",
+    values_to = "Count"
+  ) %>%
+  mutate(
+    Predicted = case_when(
+      Cell %in% c("avg_TP", "avg_FP") ~ "Predicted Positive",
+      TRUE                           ~ "Predicted Negative"
+    ),
+    Actual = case_when(
+      Cell %in% c("avg_TP", "avg_FN") ~ "True Positive",
+      TRUE                           ~ "True Negative"
+    ),
+    CellType = case_when(
+      Cell == "avg_TP" ~ "TP",
+      Cell == "avg_TN" ~ "TN",
+      Cell == "avg_FP" ~ "FP",
+      Cell == "avg_FN" ~ "FN"
+    ),
+    Label = as.character(Count) # Removed the "%" sign
+  ) %>%
+  mutate(
+    Predicted = factor(Predicted, levels = c("Predicted Positive", "Predicted Negative")),
+    Actual = factor(Actual, levels = c("True Positive", "True Negative"))
+  )
+
+cm_long$Method <- factor(cm_long$Method, levels = method_levels)
+
+# ── Plot ──
+ggplot(cm_long, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 1.2) +
+  geom_text(aes(label = Label), size = 4.5, fontface = "bold", color = "white") +
+  scale_fill_manual(
+    values = c(
+      "TP" = "#2E86AB",   # blue  – correct positive
+      "TN" = "#2E86AB",   # blue  – correct negative
+      "FN" = "#E84855",   # red   – false alarm
+      "FP" = "#F4A261"    # orange – missed
+    ),
+    guide = guide_legend(title = "Cell type")
+  ) +
+  facet_wrap(~ Method, ncol = 3) +
+  labs(
+    title    = "Average Confusion Matrix per Simulation",
+    subtitle = paste0("Values are average counts out of 80 compounds | AET = ", AET, " µg/mL"),
+    x = "Predicted class (reported concentration vs AET)",
+    y = "Actual class (true concentration vs AET)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    axis.text        = element_text(size = 9),
+    panel.grid       = element_blank(),
+    legend.position  = "bottom",
+    plot.title       = element_text(face = "bold", size = 13),
+    plot.subtitle    = element_text(size = 10, color = "grey40")
+  )
+
+cm_data
 ```
 
-ggplot(summary_table, aes(x = FP_Rate, y = recall, color = Method)) +
-  geom_point(size = 4) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + 
-  xlim(0, 1) + ylim(0, 1) +
-        labs(
-      title = "Trade-off: False Positives vs. False Negatives",
-      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
-      x = "False Positive Rate (%)",
-      y = "False Negative Rate (%)",
-      color = "Correction Method"
-    ) +
-  theme_minimal()
+```{r}
+# Define number of simulations
+N_sim <- 10000
 
-ggplot(summary_table, aes(x = recall, y = precision, color = Method)) +
-  geom_point(size = 4) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") + # Random guess line
-  xlim(0, 1) + ylim(0, 1) +
-        labs(
-      title = "Trade-off: False Positives vs. False Negatives",
-      subtitle = paste0("10,000 Simulations per Method | AET = ", AET, " µg/mL"),
-      x = "False Positive Rate (%)",
-      y = "False Negative Rate (%)",
-      color = "Correction Method"
-    ) +
-  theme_minimal()
+# ── Reconstruct TP / FP / FN / TN and calculate averages per simulation ──
+cm_data_counts <- summary_table %>%
+  mutate(
+    TP = recall * is_at_and_above_threshold,
+    FN = is_at_and_above_threshold - TP,
+    FP = reported_at_and_above_threshold - TP,
+    TN = X.is_at_and_above_threshold - FP,
+    avg_TP = round(TP / N_sim),
+    avg_FP = round(FP / N_sim),
+    avg_FN = round(FN / N_sim),
+    avg_TN = round(TN / N_sim)
+  ) %>%
+  dplyr::select(Method, avg_TP, avg_FP, avg_FN, avg_TN)
 
+# ── Pivot to long format for ggplot ──
+cm_long_counts <- cm_data_counts %>%
+  pivot_longer(
+    cols = c(avg_TP, avg_FP, avg_FN, avg_TN),
+    names_to  = "Cell",
+    values_to = "Count"
+  ) %>%
+  mutate(
+    Predicted = case_when(
+      Cell %in% c("avg_TP", "avg_FP") ~ "Pred. Positive",
+      TRUE                           ~ "Pred. Negative"
+    ),
+    Actual = case_when(
+      Cell %in% c("avg_TP", "avg_FN") ~ "True Positive",
+      TRUE                           ~ "True Negative"
+    ),
+    CellType = case_when(
+      Cell == "avg_TP" ~ "TP",
+      Cell == "avg_TN" ~ "TN",
+      Cell == "avg_FP" ~ "FP",
+      Cell == "avg_FN" ~ "FN"
+    ),
+    Label = as.character(Count)
+  ) %>%
+  mutate(
+    Predicted = factor(Predicted, levels = c("Pred. Positive", "Pred. Negative")),
+    Actual = factor(Actual, levels = c("True Positive", "True Negative"))
+  )
+
+cm_long_counts$Method <- factor(cm_long_counts$Method, levels = method_levels)
+
+# ── Plot ──
+ggplot(cm_long_counts, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 1.2) +
+  geom_text(aes(label = Label), size = 4.5, fontface = "bold", color = "white") +
+  scale_fill_manual(
+    values = c(
+      "TP" = "#2E86AB",
+      "TN" = "#2E86AB",
+      "FN" = "#E84855",
+      "FP" = "#F4A261"
+    ),
+    guide = guide_legend(title = "Cell type")
+  ) +
+  facet_wrap(~ Method, ncol = 3) +
+  labs(
+    title    = "Average Confusion Matrix per Simulation",
+    subtitle = paste0("Values are average counts out of 80 compounds | AET = ", AET, " µg/mL"),
+    x = "Predicted class (reported concentration vs AET)",
+    y = "Actual class (true concentration vs AET)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 10),
+    axis.text        = element_text(size = 9),
+    panel.grid       = element_blank(),
+    legend.position  = "bottom",
+    plot.title       = element_text(face = "bold", size = 13),
+    plot.subtitle    = element_text(size = 10, color = "grey40")
+  )
+
+cm_data_counts
+```
+
+```{r}
+# Average count per simulation WITH ± SD
+cm_sd_counts <- all_distributions %>%
+  left_join(
+    summary_table %>%
+      transmute(
+        Method,
+        actual_pos_per_sim = is_at_and_above_threshold / N_sim,
+        actual_neg_per_sim = X.is_at_and_above_threshold / N_sim
+      ),
+    by = "Method"
+  ) %>%
+  mutate(
+    sim_FN = (Percent_FN / 100) * actual_pos_per_sim,
+    sim_FP = (Percent_FP / 100) * actual_neg_per_sim,
+    sim_TP = actual_pos_per_sim - sim_FN,
+    sim_TN = actual_neg_per_sim - sim_FP
+  ) %>%
+  group_by(Method) %>%
+  summarize(
+    sd_avg_TP = round(sd(sim_TP, na.rm = TRUE), 0),
+    sd_avg_FP = round(sd(sim_FP, na.rm = TRUE), 0),
+    sd_avg_FN = round(sd(sim_FN, na.rm = TRUE), 0),
+    sd_avg_TN = round(sd(sim_TN, na.rm = TRUE), 0)
+  )
+
+cm_long_counts_sd <- cm_data_counts %>%
+  pivot_longer(
+    cols = c(avg_TP, avg_FP, avg_FN, avg_TN),
+    names_to  = "Cell",
+    values_to = "Count"
+  ) %>%
+  left_join(
+    cm_sd_counts %>%
+      pivot_longer(
+        cols = c(sd_avg_TP, sd_avg_FP, sd_avg_FN, sd_avg_TN),
+        names_to  = "Cell_sd",
+        values_to = "SD"
+      ) %>%
+      mutate(Cell = sub("sd_avg_", "avg_", Cell_sd)) %>%
+      dplyr::select(Method, Cell, SD),
+    by = c("Method", "Cell")
+  ) %>%
+  mutate(
+    Predicted = case_when(
+      Cell %in% c("avg_TP", "avg_FP") ~ "Pred. Positive",
+      TRUE                           ~ "Pred. Negative"
+    ),
+    Actual = case_when(
+      Cell %in% c("avg_TP", "avg_FN") ~ "True Positive",
+      TRUE                           ~ "True Negative"
+    ),
+    CellType = case_when(
+      Cell == "avg_TP" ~ "TP",
+      Cell == "avg_TN" ~ "TN",
+      Cell == "avg_FP" ~ "FP",
+      Cell == "avg_FN" ~ "FN"
+    ),
+    Label = paste0(Count, "±", SD)
+  ) %>%
+  mutate(
+    Predicted = factor(Predicted, levels = c("Pred. Positive", "Pred. Negative")),
+    Actual = factor(Actual, levels = c("True Positive", "True Negative"))
+  )
+
+cm_long_counts_sd$Method <- factor(cm_long_counts_sd$Method, levels = method_levels)
+
+# ── Plot ──
+ggplot(cm_long_counts_sd, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(aes(label = Label), size = 4, fontface = "bold", color = "white", lineheight = 0.9) +
+  scale_fill_manual(
+    values = c(
+      "TP" = "#2E86AB",
+      "TN" = "#2E86AB",
+      "FN" = "#E84855",
+      "FP" = "#F4A261"
+    ),
+    guide = guide_legend(title = "Cell type")
+  ) +
+  facet_wrap(~ Method, ncol = 3) +
+  labs(
+    title    = "Average Confusion Matrix per Simulation (± SD)",
+    subtitle = paste0("Values are average counts ± SD out of 80 compounds | AET = ", AET, " µg/mL"),
+    x = "Predicted class (reported concentration vs AET)",
+    y = "Actual class (true concentration vs AET)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 12),
+    axis.text        = element_text(size = 9),
+    panel.grid       = element_blank(),
+    legend.position  = "bottom",
+    plot.title       = element_text(face = "bold", size = 13),
+    plot.subtitle    = element_text(size = 10, color = "grey40")
+  )
 ```
