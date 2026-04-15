@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.26">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Pooled Concentration Distributions - Nahan et al.</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="Pooled_concentration_distributions_files/libs/clipboard/clipboard.min.js"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/popper.min.js"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="Pooled_concentration_distributions_files/libs/quarto-html/anchor.min.js"></script>
+<link href="Pooled_concentration_distributions_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="Pooled_concentration_distributions_files/libs/quarto-html/quarto-syntax-highlighting-587c61ba64f3a5504c4d52d930310e48.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="Pooled_concentration_distributions_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="Pooled_concentration_distributions_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="Pooled_concentration_distributions_files/libs/bootstrap/bootstrap-9e3ffae467580fdb927a41352e75a2e0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Pooled Concentration Distributions - Nahan et al.</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="data-from-nahan-et-al." class="level1">
+<h1>Data from Nahan et al.</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. USPF </span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>uspf_gcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">175</span>, <span class="dv">354</span>, <span class="dv">29</span>, <span class="dv">183</span>, <span class="dv">432</span>, <span class="dv">104</span>, <span class="dv">102</span>, <span class="st">"N.D."</span>, <span class="dv">39</span>, <span class="dv">35</span>, <span class="dv">35</span>, <span class="dv">33</span>, <span class="dv">86</span>, <span class="dv">169</span>, <span class="st">"N.D."</span>, <span class="dv">32</span>, <span class="st">"N.D."</span>, <span class="dv">89</span>, <span class="dv">29</span>, <span class="dv">33</span>, <span class="st">"N.D."</span>, <span class="fl">29.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">76.5</span>, <span class="fl">89.5</span>, <span class="st">"N.D."</span>, <span class="fl">36.1</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">133.6</span>, <span class="fl">208.6</span>, <span class="st">"N.D."</span>, <span class="fl">35.9</span>, <span class="st">"N.D."</span>, <span class="fl">31.2</span>, <span class="fl">31.4</span>, <span class="fl">247.3</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">30.7</span>, <span class="fl">93.6</span>, <span class="fl">76.2</span>, <span class="fl">29.0</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">89.7</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>uspf_lcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">7.9</span>, <span class="fl">6.6</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">3.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">44.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">119.7</span>, <span class="fl">3.2</span>, <span class="st">"N.D."</span>, <span class="fl">4.4</span>, <span class="st">"N.D."</span>, <span class="fl">8.0</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">1611</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">2574</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">1686</span>, <span class="dv">288</span>, <span class="dv">27</span>, <span class="dv">613</span>, <span class="dv">711</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">133</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">509</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">184</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">236</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">292</span>, <span class="st">"N.D."</span>, <span class="dv">293</span>, <span class="dv">44</span>, <span class="st">"N.D."</span>, <span class="dv">104</span>, <span class="dv">50</span>, <span class="dv">4017</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">55</span>, <span class="dv">47</span>, <span class="dv">165</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">56</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">524</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">49</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">68</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">570</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. C-USPF </span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>cuspf_gcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">31</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">114</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">30</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">94.9</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">161.9</span>, <span class="st">"N.D."</span>, <span class="fl">29.0</span>, <span class="fl">52.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">31.5</span>, <span class="fl">40.1</span>, <span class="fl">30.3</span>, <span class="st">"N.D."</span>, <span class="fl">162.9</span>, <span class="fl">281.0</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">32.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">30.6</span>, <span class="fl">83.7</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">33.3</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.1</span>, <span class="fl">51.7</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.3</span>, <span class="st">"N.D."</span>, <span class="fl">29.5</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>cuspf_lcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fl">5.2</span>, <span class="st">"N.D."</span>, <span class="fl">31.2</span>, <span class="fl">4.7</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">5.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">3.0</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">2.8</span>, <span class="st">"N.D."</span>, <span class="dv">42</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">58</span>, <span class="dv">3856</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">267</span>, <span class="dv">109</span>, <span class="dv">5133</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">207</span>, <span class="dv">371</span>, <span class="st">"N.D."</span>, <span class="dv">55</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">55</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">380</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">232</span>, <span class="st">"N.D."</span>, <span class="dv">24</span>, <span class="dv">113</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">82</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">82</span>, <span class="dv">262</span>, <span class="dv">870</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">366</span>, <span class="dv">31</span>, <span class="dv">2885</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">39</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">40</span>, <span class="st">"N.D."</span>, <span class="dv">122</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">190</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">529</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">47</span>, <span class="dv">32</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">23</span>, <span class="dv">503</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">156</span>, <span class="dv">285</span>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. CGF </span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>cgf_gcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">192</span>, <span class="dv">355</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">434</span>, <span class="dv">105</span>, <span class="dv">107</span>, <span class="dv">32</span>, <span class="dv">41</span>, <span class="dv">36</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">122</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">33</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">37</span>, <span class="dv">34</span>, <span class="st">"N.D."</span>, <span class="fl">29.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">57.3</span>, <span class="fl">76.1</span>, <span class="st">"N.D."</span>, <span class="fl">29.3</span>, <span class="st">"N.D."</span>, <span class="fl">51.7</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">72.5</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">84.9</span>, <span class="st">"N.D."</span>, <span class="fl">293.2</span>, <span class="fl">67.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">611.3</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">61.9</span>, <span class="st">"N.D."</span>, <span class="fl">53.3</span>, <span class="fl">29.8</span>, <span class="fl">67.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">80.0</span>, <span class="fl">29.1</span>, <span class="st">"N.D."</span>, <span class="fl">54.6</span>, <span class="fl">29.7</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>cgf_lcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">15.1</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">12.0</span>, <span class="fl">7.5</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">88</span>, <span class="dv">430</span>, <span class="dv">41</span>, <span class="dv">2148</span>, <span class="dv">28</span>, <span class="dv">65</span>, <span class="dv">312</span>, <span class="st">"N.D."</span>, <span class="dv">281</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">222</span>, <span class="dv">24</span>, <span class="st">"N.D."</span>, <span class="dv">201</span>, <span class="dv">1270</span>, <span class="dv">65</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">315</span>, <span class="dv">66</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">105</span>, <span class="dv">1591</span>, <span class="st">"N.D."</span>, <span class="dv">781</span>, <span class="dv">160</span>, <span class="dv">215</span>, <span class="dv">62</span>, <span class="st">"N.D."</span>, <span class="dv">650</span>, <span class="dv">834</span>, <span class="dv">83</span>, <span class="dv">216</span>, <span class="dv">66</span>, <span class="dv">74</span>, <span class="dv">334</span>, <span class="st">"N.D."</span>, <span class="dv">109</span>, <span class="st">"N.D."</span>, <span class="dv">102</span>, <span class="dv">25</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">448</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">320</span>, <span class="dv">208</span>, <span class="st">"N.D."</span>, <span class="dv">4961</span>, <span class="st">"N.D."</span>, <span class="dv">51</span>, <span class="dv">45</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">107</span>, <span class="dv">84</span>, <span class="st">"N.D."</span>, <span class="dv">299</span>, <span class="st">"N.D."</span>, <span class="dv">225</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">32</span>, <span class="st">"N.D."</span>, <span class="dv">89</span>, <span class="dv">968</span>, <span class="dv">323</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="co"># 4  UFC-CGF</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>ufccgf_gcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">225</span>, <span class="dv">323</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">380</span>, <span class="dv">94</span>, <span class="dv">95</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>                    <span class="dv">32</span>, <span class="dv">32</span>, <span class="dv">31</span>, <span class="dv">77</span>, <span class="dv">140</span>, <span class="dv">32</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">75</span>, <span class="st">"N.D."</span>, <span class="dv">31</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">31.9</span>, <span class="fl">38.6</span>, <span class="fl">30.6</span>, <span class="st">"N.D."</span>, <span class="fl">154.1</span>, <span class="fl">246.8</span>, </span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">32.6</span>, <span class="fl">32.3</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">56.7</span>, <span class="fl">30.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>)</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>ufccgf_lcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fl">5.7</span>, <span class="fl">5.7</span>, <span class="fl">40.5</span>, <span class="fl">3.9</span>, <span class="fl">8.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">3.2</span>, </span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>                    <span class="fl">5.8</span>, <span class="fl">53.4</span>, <span class="st">"N.D."</span>, <span class="fl">12.4</span>, <span class="st">"N.D."</span>, <span class="fl">25.3</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">9.3</span>, <span class="fl">18.9</span>, <span class="st">"N.D."</span>, <span class="fl">5.5</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">2138</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">2378</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="dv">102</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">17</span>, <span class="st">"N.D."</span>, <span class="dv">339</span>, </span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="dv">1081</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">344</span>, <span class="st">"N.D."</span>, <span class="dv">556</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>                    <span class="dv">172</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">211</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">35</span>, </span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">190</span>, <span class="st">"N.D."</span>, <span class="dv">4045</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">638</span>, </span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>                    <span class="dv">55</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">43</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="dv">85</span>, <span class="dv">186</span>, <span class="st">"N.D."</span>, <span class="dv">915</span>, <span class="dv">28</span>, <span class="dv">531</span>, <span class="dv">45</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>                    <span class="dv">2973</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">537</span>)</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="co"># 5  FC-CGF</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>fccgf_gcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">153</span>, <span class="dv">250</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">353</span>, <span class="dv">84</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>                   <span class="dv">31</span>, <span class="dv">32</span>, <span class="dv">31</span>, <span class="dv">81</span>, <span class="dv">122</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">31</span>, <span class="st">"N.D."</span>, <span class="fl">50.2</span>, <span class="st">"N.D."</span>, <span class="fl">62.1</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">173.7</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>                   <span class="fl">29.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">34.6</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">35.2</span>, </span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>                   <span class="fl">45.2</span>, <span class="fl">31.0</span>, <span class="st">"N.D."</span>, <span class="fl">229.9</span>, <span class="fl">415.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">35.7</span>, </span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="fl">35.5</span>, <span class="st">"N.D."</span>, <span class="fl">29.1</span>, <span class="fl">30.9</span>, <span class="fl">29.4</span>, <span class="st">"N.D."</span>, <span class="fl">30.6</span>, </span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>                   <span class="fl">94.7</span>, <span class="fl">104.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">35.2</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">29.6</span>)</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>fccgf_lcms <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">17.5</span>, <span class="fl">4.6</span>, <span class="st">"N.D."</span>, <span class="fl">3.6</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="fl">7.0</span>, <span class="st">"N.D."</span>, <span class="fl">3.0</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">176.3</span>, </span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="fl">1.8</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="fl">7.4</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">2412</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="dv">62</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">89</span>, <span class="dv">2298</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>                   <span class="dv">153</span>, <span class="dv">95</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>                   <span class="dv">1978</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">640</span>, <span class="st">"N.D."</span>, <span class="dv">223</span>, </span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">455</span>, <span class="st">"N.D."</span>, <span class="dv">21</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">44</span>, <span class="dv">23</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">23</span>, <span class="st">"N.D."</span>, <span class="dv">228</span>, <span class="st">"N.D."</span>, <span class="dv">3513</span>, <span class="dv">54</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">47</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">44</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">116</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>                   <span class="dv">279</span>, <span class="dv">157</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">1929</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, <span class="dv">40</span>, <span class="dv">29</span>, <span class="st">"N.D."</span>, <span class="dv">1550</span>, <span class="dv">76</span>, <span class="st">"N.D."</span>, <span class="st">"N.D."</span>, </span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>                   <span class="st">"N.D."</span>, <span class="dv">394</span>)</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a><span class="co"># COMBINE ALL</span></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>all_gcms_raw <span class="ot">&lt;-</span> <span class="fu">c</span>(uspf_gcms, cuspf_gcms, cgf_gcms, ufccgf_gcms, fccgf_gcms)</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>all_lcms_raw <span class="ot">&lt;-</span> <span class="fu">c</span>(uspf_lcms, cuspf_lcms, cgf_lcms, ufccgf_lcms, fccgf_lcms)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="loq" class="level1">
+<h1>LOQ</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Limits of Quantification in µg/mL</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>loq_gc <span class="ot">&lt;-</span> <span class="fl">0.1</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>loq_lc <span class="ot">&lt;-</span> <span class="fl">0.5</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"># To get value to µg/mL</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>gc_num <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">as.numeric</span>(all_gcms_raw) <span class="sc">*</span> <span class="fl">0.2</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>lc_num <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">as.numeric</span>(all_lcms_raw) <span class="sc">*</span> <span class="fl">0.2</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Create the Left/Right Interval Matrices required by fitdistcens</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>gc_cens <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">left =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(gc_num), <span class="cn">NA</span>, gc_num),</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">right =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(gc_num), loq_gc, gc_num)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>lc_cens <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">left =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(lc_num), <span class="cn">NA</span>, lc_num),</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">right =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(lc_num), loq_lc, lc_num)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Print proportions below LOQ</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>gcms_nd_pct <span class="ot">&lt;-</span> <span class="fu">sum</span>(<span class="fu">is.na</span>(gc_num)) <span class="sc">/</span> <span class="fu">length</span>(gc_num) <span class="sc">*</span> <span class="dv">100</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>lcms_nd_pct <span class="ot">&lt;-</span> <span class="fu">sum</span>(<span class="fu">is.na</span>(lc_num)) <span class="sc">/</span> <span class="fu">length</span>(lc_num) <span class="sc">*</span> <span class="dv">100</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Pooled GC/MS N.D. Percentage: %.1f%%</span><span class="sc">\n</span><span class="st">"</span>, gcms_nd_pct))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Pooled GC/MS N.D. Percentage: 60.7%</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Pooled LC/MS N.D. Percentage: %.1f%%</span><span class="sc">\n</span><span class="st">"</span>, lcms_nd_pct))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Pooled LC/MS N.D. Percentage: 65.2%</code></pre>
+</div>
+</div>
+</section>
+<section id="fit-distributions" class="level1">
+<h1>Fit distributions</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit Normal, Log-Normal, and Gamma distributions for GC/MS</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>fit_gc_norm  <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(gc_cens, <span class="st">"norm"</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>fit_gc_lnorm <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(gc_cens, <span class="st">"lnorm"</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>fit_gc_gamma <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(gc_cens, <span class="st">"gamma"</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Fit Normal, Log-Normal, and Gamma distributions for LC/MS</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>fit_lc_norm  <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(lc_cens, <span class="st">"norm"</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>fit_lc_lnorm <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(lc_cens, <span class="st">"lnorm"</span>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>fit_lc_gamma <span class="ot">&lt;-</span> <span class="fu">fitdistcens</span>(lc_cens, <span class="st">"gamma"</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co"># AIC for comparison </span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">Normal =</span> <span class="fu">summary</span>(fit_gc_norm)<span class="sc">$</span>aic, </span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">LogNormal =</span> <span class="fu">summary</span>(fit_gc_lnorm)<span class="sc">$</span>aic, </span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">Gamma =</span> <span class="fu">summary</span>(fit_gc_gamma)<span class="sc">$</span>aic)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   Normal LogNormal     Gamma 
+ 1574.304  1812.131  1692.356 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">Normal =</span> <span class="fu">summary</span>(fit_lc_norm)<span class="sc">$</span>aic, </span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">LogNormal =</span> <span class="fu">summary</span>(fit_lc_lnorm)<span class="sc">$</span>aic, </span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">Gamma =</span> <span class="fu">summary</span>(fit_lc_gamma)<span class="sc">$</span>aic)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   Normal LogNormal     Gamma 
+ 2992.780  2738.027  2668.303 </code></pre>
+</div>
+</div>
+</section>
+<section id="results-log-normal-distribution" class="level1">
+<h1>Results log normal distribution</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(fit_gc_lnorm)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Fitting of the distribution ' lnorm ' By maximum likelihood on censored data 
+Parameters
+         estimate Std. Error
+meanlog -3.192182  0.4087984
+sdlog    5.330066  0.3821352
+Loglikelihood:  -904.0654   AIC:  1812.131   BIC:  1819.841 
+Correlation matrix:
+           meanlog      sdlog
+meanlog  1.0000000 -0.5965317
+sdlog   -0.5965317  1.0000000</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(fit_lc_lnorm)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Fitting of the distribution ' lnorm ' By maximum likelihood on censored data 
+Parameters
+         estimate Std. Error
+meanlog -2.346351  0.3213298
+sdlog    4.844873  0.2901309
+Loglikelihood:  -1367.014   AIC:  2738.027   BIC:  2746.662 
+Correlation matrix:
+           meanlog      sdlog
+meanlog  1.0000000 -0.6499402
+sdlog   -0.6499402  1.0000000</code></pre>
+</div>
+</div>
+</section>
+<section id="qqplots" class="level1">
+<h1>QQplots</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>df_gc <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">conc =</span> <span class="fu">na.omit</span>(gc_num))</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>df_lc <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">conc =</span> <span class="fu">na.omit</span>(lc_num))</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># ------------- GC Plots -------------</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>q_gc_n <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_gc, <span class="fu">aes</span>(<span class="at">sample =</span> conc)) <span class="sc">+</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qnorm, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_gc_norm<span class="sc">$</span>estimate[<span class="st">"mean"</span>], <span class="at">sd =</span> fit_gc_norm<span class="sc">$</span>estimate[<span class="st">"sd"</span>]), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qnorm, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_gc_norm<span class="sc">$</span>estimate[<span class="st">"mean"</span>], <span class="at">sd =</span> fit_gc_norm<span class="sc">$</span>estimate[<span class="st">"sd"</span>]), <span class="at">color =</span> <span class="st">"darkblue"</span>) <span class="sc">+</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled GC: Normal"</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>q_gc_ln <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_gc, <span class="fu">aes</span>(<span class="at">sample =</span> <span class="fu">log</span>(conc))) <span class="sc">+</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qnorm, </span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>          <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_gc_lnorm<span class="sc">$</span>estimate[<span class="st">"meanlog"</span>], </span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>                         <span class="at">sd =</span> fit_gc_lnorm<span class="sc">$</span>estimate[<span class="st">"sdlog"</span>]), </span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>          <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qnorm, </span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>               <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_gc_lnorm<span class="sc">$</span>estimate[<span class="st">"meanlog"</span>], </span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>                              <span class="at">sd =</span> fit_gc_lnorm<span class="sc">$</span>estimate[<span class="st">"sdlog"</span>]), </span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"darkred"</span>) <span class="sc">+</span></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled GC: Log-normal"</span>, </span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>       <span class="at">x =</span> <span class="st">"Theoretical Normal Quantiles"</span>, </span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>       <span class="at">y =</span> <span class="st">"Sample Quantiles (log(µg/mL))"</span>) <span class="sc">+</span> </span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>q_gc_g <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_gc, <span class="fu">aes</span>(<span class="at">sample =</span> conc)) <span class="sc">+</span></span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qgamma, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">shape =</span> fit_gc_gamma<span class="sc">$</span>estimate[<span class="st">"shape"</span>], <span class="at">rate =</span> fit_gc_gamma<span class="sc">$</span>estimate[<span class="st">"rate"</span>]), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qgamma, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">shape =</span> fit_gc_gamma<span class="sc">$</span>estimate[<span class="st">"shape"</span>], <span class="at">rate =</span> fit_gc_gamma<span class="sc">$</span>estimate[<span class="st">"rate"</span>]), <span class="at">color =</span> <span class="st">"darkgreen"</span>) <span class="sc">+</span></span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled GC: Gamma"</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="co"># Display GC comparison</span></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>q_gc_n <span class="sc">+</span> q_gc_ln <span class="sc">+</span> q_gc_g</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Pooled_concentration_distributions_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ------------- LC Plots -------------</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>q_lc_n <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_lc, <span class="fu">aes</span>(<span class="at">sample =</span> conc)) <span class="sc">+</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qnorm, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_lc_norm<span class="sc">$</span>estimate[<span class="st">"mean"</span>], <span class="at">sd =</span> fit_lc_norm<span class="sc">$</span>estimate[<span class="st">"sd"</span>]), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qnorm, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_lc_norm<span class="sc">$</span>estimate[<span class="st">"mean"</span>], <span class="at">sd =</span> fit_lc_norm<span class="sc">$</span>estimate[<span class="st">"sd"</span>]), <span class="at">color =</span> <span class="st">"darkblue"</span>) <span class="sc">+</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled LC: Normal"</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>q_lc_ln <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_lc, <span class="fu">aes</span>(<span class="at">sample =</span> <span class="fu">log</span>(conc))) <span class="sc">+</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qnorm, </span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>          <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_lc_lnorm<span class="sc">$</span>estimate[<span class="st">"meanlog"</span>], </span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>                         <span class="at">sd =</span> fit_lc_lnorm<span class="sc">$</span>estimate[<span class="st">"sdlog"</span>]), </span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>          <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qnorm, </span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>               <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">mean =</span> fit_lc_lnorm<span class="sc">$</span>estimate[<span class="st">"meanlog"</span>], </span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>                              <span class="at">sd =</span> fit_lc_lnorm<span class="sc">$</span>estimate[<span class="st">"sdlog"</span>]), </span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"darkred"</span>) <span class="sc">+</span></span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled LC: Log-normal"</span>, </span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>       <span class="at">x =</span> <span class="st">"Theoretical Normal Quantiles"</span>, </span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>       <span class="at">y =</span> <span class="st">"Sample Quantiles (log(µg/mL))"</span>) <span class="sc">+</span> </span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>q_lc_g <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(df_lc, <span class="fu">aes</span>(<span class="at">sample =</span> conc)) <span class="sc">+</span></span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq</span>(<span class="at">distribution =</span> qgamma, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">shape =</span> fit_lc_gamma<span class="sc">$</span>estimate[<span class="st">"shape"</span>], <span class="at">rate =</span> fit_lc_gamma<span class="sc">$</span>estimate[<span class="st">"rate"</span>]), <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_qq_line</span>(<span class="at">distribution =</span> qgamma, <span class="at">dparams =</span> <span class="fu">list</span>(<span class="at">shape =</span> fit_lc_gamma<span class="sc">$</span>estimate[<span class="st">"shape"</span>], <span class="at">rate =</span> fit_lc_gamma<span class="sc">$</span>estimate[<span class="st">"rate"</span>]), <span class="at">color =</span> <span class="st">"darkgreen"</span>) <span class="sc">+</span></span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Pooled LC: Gamma"</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>()</span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Display LC comparison</span></span>
+<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>q_lc_n <span class="sc">+</span> q_lc_ln <span class="sc">+</span> q_lc_g</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Pooled_concentration_distributions_files/figure-html/unnamed-chunk-5-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
