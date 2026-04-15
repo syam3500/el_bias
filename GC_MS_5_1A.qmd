@@ -1896,17 +1896,20 @@ total_TN <- 0
 
 total_points <- N_sim * N_extractables
 
-for (i in 1:N_sim) {
-sim_data <- gc_ms %>% 
-  sample_n(N_extractables, replace = TRUE)
-  
-## 1) Concentration around the AET
-base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
-## VI) RRF generated via the machine learning
-simulated_RRF <- py$predict_rrf_raw(sim_data)
-## no correction
-corrected_conc <- base_conc_sim * simulated_RRF
+gc_ms$Predicted_RRF <- py$predict_rrf_raw(gc_ms)
 
+for (i in 1:N_sim) {
+  sim_data <- gc_ms %>% 
+    sample_n(N_extractables, replace = FALSE)
+  
+  base_conc_sim <- runif(N_extractables, min = 0.5 * AET, max = 2 * AET)
+  
+  sim_RRF <- sim_data$`5 µg/mL`         
+  predicted_RRF <- sim_data$Predicted_RRF 
+  
+  exp_conc <- base_conc_sim * sim_RRF           
+  corrected_conc <- exp_conc / predicted_RRF     
+  
 is_at_and_above_threshold <- base_conc_sim >= AET
 reported_at_and_above_threshold <- corrected_conc >= AET
 
