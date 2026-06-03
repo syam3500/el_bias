@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies"
+message: "If you use this software or the cleaned datasets, please cite the thesis below."
+type: software
+authors:
+  - family-names: Yam
+    given-names: Sophie
+    affiliation: "Hasselt University, Faculty of Sciences -- School for Information Technology"
+license: MIT
+keywords:
+  - extractables
+  - leachables
+  - relative response factor
+  - Monte Carlo simulation
+  - uncertainty factor
+  - ISO 10993-18
+  - quantification bias
+references:
+  - type: thesis
+    title: "Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies"
+    authors:
+      - family-names: Yam
+        given-names: Sophie
+    year: 2026
+    institution:
+      name: "Hasselt University, Faculty of Sciences -- School for Information Technology"
+    thesis-type: "Master's thesis (Master of Statistics and Data Science)"

@@ -1,0 +1,42 @@
+# =============================================================================
+# Python dependencies for "Statistical Evaluation of Quantification Bias in
+# Extractables and Leachables Studies" (Yam, 2026, Hasselt University).
+#
+# Tested with Python 3.11 on Windows 11 and Linux (Ubuntu 22.04).
+# Install with:    pip install -r requirements.txt
+# =============================================================================
+
+# ── Core scientific stack ────────────────────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+
+# ── Plotting ─────────────────────────────────────────────────────────────────
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# ── Machine learning ─────────────────────────────────────────────────────────
+scikit-learn==1.5.2
+joblib==1.4.2
+lightgbm==4.5.0
+optuna==4.0.0
+
+# ── Cheminformatics (RRF descriptor calculation, notebooks 04-06) ───────────
+rdkit==2024.3.5
+pubchempy==1.0.4
+
+# ── Excel / spreadsheet I/O ─────────────────────────────────────────────────
+openpyxl==3.1.5
+xlsxwriter==3.2.0
+
+# ── Reporting / figures ──────────────────────────────────────────────────────
+graphviz==0.20.3                # methodology flowchart (scripts/postprocessing)
+python-pptx==1.0.2              # slide deck generation (scripts/reporting)
+
+# ── Notebook environment ─────────────────────────────────────────────────────
+jupyterlab==4.2.5
+ipykernel==6.29.5
+ipywidgets==8.1.5
+
+# ── Optional but recommended for full reproducibility ────────────────────────
+tqdm==4.66.5                    # progress bars in long Monte Carlo aggregations

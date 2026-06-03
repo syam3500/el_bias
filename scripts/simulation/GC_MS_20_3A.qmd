@@ -1,0 +1,1486 @@
+---
+title: "GC/MS Simulation — Custom Mixture Distribution — Empirical RRFs (20 µg/mL Surrogate)"
+format: gfm
+editor: visual
+---
+
+```{r setup, include=FALSE}
+# Headless rendering: use Cairo if no X11 display is available
+if (.Platform$OS.type == "unix" && Sys.getenv("DISPLAY") == "") {
+  options(bitmapType = "cairo")
+}
+```
+
+# Libraries
+
+```{r}
+library(tidyverse) # ggplot2, dplyr, readr, purrr, tidyr, stringr, forcats
+library(readxl)    # reading .xlsx source files
+library(patchwork) # composing multi-panel ggplot2 figures
+library(ggrepel)   # geom_label_repel() for the FP vs FN scatter plot
+library(reticulate) # py$ bridge — exposes Python session objects to R
+```
+
+```{r}
+#| include: false
+# Set global plot settings for PNG output on Linux
+knitr::opts_chunk$set(
+  dev = "png", 
+  dpi = 300, 
+  dev.args = list(type = "cairo")
+) 
+```
+
+# Data Extraction
+
+RRF reference data are sourced from the US FDA Chemicals List for Analytical Performance (CLAP) — <https://cdrh-rst.fda.gov/chemicals-list-analytical-performance-clap>. Three datasets (GC/MS, LC/MS positive-ion, LC/MS negative-ion) were extracted from the corresponding PDFs and stored as Excel workbooks. Non-detected values were set to 0 and values reported as below the detection limit were set to 0.001, following Subject Matter Expert (SME) guidance. All three datasets are loaded in every simulation file to maintain cross-technique comparability; only the dataset relevant to this scenario is sampled in the Monte Carlo loop.
+
+```{r}
+#| message: false
+# ── GC/MS RRF data (CLAP) ──────────────────────────────────────────────────
+# Source: RRF GCMS for CLAP.pdf  →  ../../data/processed/CLAP_GCMS_clean.xlsx  (sheet "GC-MS")
+gcms_clap       <- read_excel(path = "../../data/processed/CLAP_GCMS_clean.xlsx", sheet = "GC-MS")
+gcms_clap_clean <- gcms_clap %>% na.omit()
+gcms_clap_clean$"5 µg/mL"  <- as.numeric(gcms_clap_clean$"5 µg/mL")
+gcms_clap_clean$"10 µg/mL" <- as.numeric(gcms_clap_clean$"10 µg/mL")
+gcms_clap_clean$"20 µg/mL" <- as.numeric(gcms_clap_clean$"20 µg/mL")
+
+# ── LC/MS positive-ion RRF data (CLAP) ─────────────────────────────────────
+# Source: LCMS RRFs CLAP Positive Ion Detection.pdf  →  ../../data/processed/CLAP_LCMS_clean.xlsx  (sheet "LCMSPOS")
+lcmspos_clap       <- read_excel(path = "../../data/processed/CLAP_LCMS_clean.xlsx", sheet = "LCMSPOS")
+lcmspos_clap_clean <- lcmspos_clap %>% na.omit()
+
+# ── LC/MS negative-ion RRF data (CLAP) ─────────────────────────────────────
+# Source: LCMS RRFs CLAP Negative Ion Detection.pdf  →  ../../data/processed/CLAP_LCMS_clean.xlsx  (sheet "LCMSNEG")
+lcmsneg_clap       <- read_excel(path = "../../data/processed/CLAP_LCMS_clean.xlsx", sheet = "LCMSNEG")
+lcmsneg_clap_clean <- lcmsneg_clap %>% na.omit()
+
+# Dataset size check
+# Each simulation iteration draws N_extractables = 80 compounds WITHOUT replacement;
+# the relevant column must contain at least 80 non-missing entries.
+cat(sprintf("GC/MS:   %d compounds (3 surrogate concentrations)\n", nrow(gcms_clap_clean)))
+cat(sprintf("LC/MS+:  %d compounds (3 surrogate concentrations)\n", nrow(lcmspos_clap_clean)))
+cat(sprintf("LC/MS-:  %d compounds (3 surrogate concentrations)\n", nrow(lcmsneg_clap_clean)))
+```
+
+# Simulation parameters
+
+```{r}
+# Analytical Evaluation Threshold (AET) in µg/mL
+AET <- 3
+```
+
+# Scenario: Custom Mixture Concentration Distribution with Empirical GC/MS RRFs (20 µg/mL Surrogate)
+
+This notebook presents Monte Carlo simulation results quantifying the classification bias introduced by Relative Response Factors (RRFs) in GC/MS extractables and leachables (E&L) studies. In each iteration, 80 hypothetical extractable compounds are drawn from a chosen concentration distribution, their measured concentrations are distorted by an RRF, and each compound is classified as at or above / below the Analytical Evaluation Threshold (AET). Several uncertainty-factor (UF) correction strategies are then evaluated against the baseline (no correction) using standard classification metrics.
+
+::: {.callout-note appearance="simple"}
+## Simulation design
+
+| Parameter | Value |
+|------------------------------------|------------------------------------|
+| **Analytical technique** | GC/MS |
+| **Surrogate concentration** | **20 µg/mL** |
+| **Concentration distribution (Conc ID 3)** | Custom mixture distribution (following Rozio *et al.*) |
+| **RRF distribution (RRF ID A)** | Empirical — non-parametric bootstrap (sampling without replacement) from the GC/MS section of the US FDA CLAP list, at a surrogate concentration of **20 µg/mL**. This approach preserves the real-world dispersion of detector response factors. |
+| **AET** | 0.45 µg/mL |
+| **Iterations** (`N_sim`) | 10,000 |
+| **Compounds per iteration** (`N_extractables`) | 80 |
+| **Correction strategies** | No correction; UF = 2; UF = 4; UF = 10; UF(RSD); UF(RSD, filtered); UF(mean·RSD, filtered); UF(mean·RSD); µ/Percentile (16th); Percentile 10th; Percentile 20th; RRFlow; RRF\<1; Machine Learning |
+| **Performance metrics** | FNR, FPR, F₁, F_β (β = 5) |
+
+The UF formulas follow ISO 10993-18. The **False Negative Rate (FNR)** quantifies under-reporting risk (compounds truly ≥ AET that are missed), while the **False Positive Rate (FPR)** quantifies over-reporting.
+:::
+
+## Initialisation of the comparison table
+
+```{r}
+# Accumulates one row per correction method; populated in the loops below.
+# Columns: method label, mean FNR/FPR and their binomial SDs, precision, recall,
+#          F1, F-beta (beta=5) across all N_sim iterations.
+summary_table <- data.frame(
+  Method = character(),
+  FN_Rate = numeric(),   # False Negative Rate  (proportion of truly ≥ AET missed)
+  FP_Rate = numeric(),   # False Positive Rate  (proportion of truly < AET over-reported)
+  FN_SD = numeric(),     # Binomial SD of FNR
+  FP_SD = numeric(),     # Binomial SD of FPR
+  precision = numeric(), # TP / (TP + FP)
+  recall = numeric(),    # TP / (TP + FN)  — same as sensitivity / true-positive rate
+  F1 = numeric(),        # Harmonic mean of precision and recall
+  f_beta = numeric()    # F-beta score (beta = 5: strongly weights recall over precision)
+)
+# Stores the per-iteration metric distributions for violin / density plots.
+all_distributions <- data.frame()
+```
+
+## Baseline: No RRF Correction
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+dist_f1 <- numeric(N_sim)
+dist_f5 <- numeric(N_sim)
+dist_fnr <- numeric(N_sim)
+dist_fpr <- numeric(N_sim)
+beta <- 5
+
+for (i in 1:N_sim) {
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+corrected_conc <- base_conc_sim * simulated_RRF
+
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
+
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "No Correction",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF =  1
+  )
+)
+
+metrics_df <- data.frame(
+  Method = "No Correction",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Uncertainty-Factor (UF) Corrections — ISO 10993-18
+
+```{r}
+# RSD of the full (unfiltered) RRF dataset — used in the ISO 10993-18 UF formula
+rsd_all <- function(x) {
+  return(sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+}
+
+# RSD of the filtered RRF dataset (0.05 < RRF ≤ 1) — avoids negative UF from extreme outliers
+rsd_filtered <- function(x) {
+  x_use = x[x<=1&x>0.05]
+  return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
+}
+# Mean of the filtered RRF dataset — used in the extended UF(mean·RSD) formula
+mean_filtered <- function(x) {
+  x_use <- x[x <= 1 & x > 0.05]
+  return(mean(x_use, na.rm = TRUE))
+}
+
+
+set.seed(123)
+N_sim <- 10000
+
+UF_RSD <- 1/(1 - rsd_all(gcms_clap_clean$"20 µg/mL")) # formula from ISO 10993-18
+
+UF_RSD_filtered <- 1/(1 - rsd_filtered(gcms_clap_clean$"20 µg/mL"))  # case to avoid negative rsd
+UF_meanRSD_filtered <- 1/(mean_filtered(gcms_clap_clean$"20 µg/mL") * (1 - rsd_filtered(gcms_clap_clean$"20 µg/mL"))) # derived formula from ISO 10993-18 with mean (filtered 0.05-1)
+
+UF_meanRSD <- 1/(mean(gcms_clap_clean$"20 µg/mL", na.rm = TRUE) * (1 - rsd_all(gcms_clap_clean$"20 µg/mL"))) # derived formula from ISO 10993-18 with mean
+
+UF_list <- c(
+  "UF (2)"   = 2, 
+  "UF (4)"   = 4,
+  "UF (10)"  = 10, 
+  "UF (RSD)" = UF_RSD,
+  "UF (RSD filtered)" = UF_RSD_filtered,
+  "UF (µRSD filtered)" = UF_meanRSD_filtered,
+
+  "UF (µRSD)"    = UF_meanRSD
+
+)
+
+N_extractables <- 80
+
+for (m_name in names(UF_list)) {
+  uf_val <- UF_list[[m_name]]
+  total_FN <- 0
+  total_FP <- 0
+  total_TP <- 0
+  total_TN <- 0
+  
+  
+for (i in 1:N_sim) {
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+  
+  exp_conc <- (base_conc_sim * simulated_RRF)
+  corrected_conc <- exp_conc * uf_val 
+  
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
+
+ iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = m_name,
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF =  uf_val
+  )
+)
+metrics_df <- data.frame(
+  Method = m_name,
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+}
+
+UF_RSD
+
+UF_RSD_filtered
+
+UF_meanRSD_filtered
+
+UF_meanRSD
+
+
+```
+
+## Correction Factor mean/16th percentile
+
+```{r}
+percentile <- function(x) {
+  return(quantile(x, .16))
+}
+
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+RRF_GCMS_superior0 <- gcms_clap_clean$"20 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+meanGCMS <- mean(RRF_GCMS_superior0)
+percentileGCMS <- percentile(RRF_GCMS_superior0)
+
+for (i in 1:N_sim) {
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+
+exp_conc <- (base_conc_sim * simulated_RRF)
+corrected_conc <- exp_conc * (meanGCMS / percentileGCMS)
+
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
+
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "µ/Percentile (16th)",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = meanGCMS/percentileGCMS
+  )
+)
+metrics_df <- data.frame(
+  Method = "µ/Percentile (16th)",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Correction RRFlow
+
+```{r}
+
+
+# RSD of the filtered RRF dataset (0.05 < RRF ≤ 1) — avoids negative UF from extreme outliers
+rsd_filtered <- function(x) {
+  x_use = x[x<=1&x>0.05]
+  return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
+}
+# Mean of the filtered RRF dataset — used in the extended UF(mean·RSD) formula
+mean_filtered <- function(x) {
+  x_use <- x[x <= 1 & x > 0.05]
+  return(mean(x_use, na.rm = TRUE))
+}
+
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+RRF_GCMS_superior0 <- gcms_clap_clean$"20 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+# Apply Part 18 formula for database
+UF <- 1/(1-rsd_filtered(RRF_GCMS_superior0))
+
+for (i in 1:N_sim) {
+
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## add a normal / lognormal distribution to get a "exp" RRF with some variability e.g 30%
+exp_RRF <- simulated_RRF * rnorm(n = N_extractables, 1, 0.3)
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
+condition <- (simulated_RRF < 0.5) | (simulated_RRF > 2) # RRFlow conditions rescaling factor should be focused only to those compounds which exhibits RRF< 0.5 and RRF>2 
+corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
+
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
+
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "RRFlow",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = UF
+  )
+  )
+
+metrics_df <- data.frame(
+  Method = "RRFlow",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Correction RRF\<1
+
+```{r}
+
+
+# RSD of the filtered RRF dataset (0.05 < RRF ≤ 1) — avoids negative UF from extreme outliers
+rsd_filtered <- function(x) {
+  x_use = x[x<=1&x>0.05]
+  return(sd(x_use, na.rm = TRUE) / mean(x_use, na.rm = TRUE))
+}
+# Mean of the filtered RRF dataset — used in the extended UF(mean·RSD) formula
+mean_filtered <- function(x) {
+  x_use <- x[x <= 1 & x > 0.05]
+  return(mean(x_use, na.rm = TRUE))
+}
+
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+RRF_GCMS_superior0 <- gcms_clap_clean$"20 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+# Apply Part 18 formula for database
+UF <- 1/(1-rsd_filtered(RRF_GCMS_superior0))
+
+for (i in 1:N_sim) {
+
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+## add a normal / lognormal distribution to get a "exp" RRF with some variability e.g 30%
+exp_RRF <- simulated_RRF * rnorm(n = N_extractables, 1, 0.3)
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc * UF             # corrected concentration: Exp * UF (conservative method)
+condition <- (simulated_RRF < 1)  # Condition only for LOW responders
+corrected_conc[condition] <- exp_conc[condition] / exp_RRF[condition] # average value of the RRF RRFlow application in extractables amount rescaling ( The average RRF determined by the RRFlow will be used to re-calculate the amount of the corresponding compound detected in the extractables study , will assume that it is in the linearity range) 
+
+  is_at_and_above_threshold <- base_conc_sim >= AET
+  reported_at_and_above_threshold <- corrected_conc >= AET
+
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "RRF<1",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = UF
+  )
+)
+
+metrics_df <- data.frame(
+  Method = "RRF<1",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Correction Percentile 10th
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+RRF_GCMS_superior0 <- gcms_clap_clean$"20 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+conservative_RRF_estimate <- quantile(RRF_GCMS_superior0, 0.10)
+
+for (i in 1:N_sim) {
+
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc / conservative_RRF_estimate
+
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
+
+    iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Percentile 10th",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = 1/ conservative_RRF_estimate
+  )
+)
+
+metrics_df <- data.frame(
+  Method = "Percentile 10th",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Correction Percentile 20th
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+RRF_GCMS_superior0 <- gcms_clap_clean$"20 µg/mL"
+RRF_GCMS_superior0 <- RRF_GCMS_superior0[RRF_GCMS_superior0 > 0]
+
+conservative_RRF_estimate <- quantile(RRF_GCMS_superior0, 0.20)
+
+for (i in 1:N_sim) {
+
+set.seed(i)
+S <- runif(N_extractables, min = 0, max = 1)^2
+p1 <- round(0.70 * N_extractables)
+p2 <- round(0.90 * N_extractables) 
+x_70 <- S[1:p1]
+x_20 <- S[(p1 + 1):p2] * 10
+x_10 <- S[(p2 + 1):N_extractables] * 100
+## 3) Concentration from a custom distribution
+base_conc_sim <- sample(c(x_70, x_20, x_10))
+## A) Non-Parametric Bootstrap of the GC/MS dataset (5µg/mL)
+simulated_RRF <- sample(gcms_clap_clean$"20 µg/mL", size = N_extractables, replace = FALSE)
+
+exp_conc <- base_conc_sim * simulated_RRF   # experimental concentration : True concentration with the actual RRF
+corrected_conc <- exp_conc / conservative_RRF_estimate
+
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
+
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+  
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Percentile 20th",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = 1 / conservative_RRF_estimate
+  )
+)
+
+metrics_df <- data.frame(
+  Method = "Percentile 20th",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+## Machine Learning
+
+Loading the ML Model
+
+```{python}
+import joblib
+import pandas as pd
+import os
+
+# Attempt to load the model and the feature list
+# This try-except block allows the script to run locally even if binary assets are missing
+try:
+    model = joblib.load('../../models/rf_rrf_model_final_20_20ug.joblib')
+    feats = joblib.load('../../models/features_20_20ug.joblib')
+except Exception as e:
+    print(f"Notice: ML model loading failed ({e}). Falling back to unit-RRF predictions.")
+    model = None
+    feats = None
+
+def predict_rrf_raw(df):
+    if model is None or feats is None:
+        # Return Neutral RRF (1.0) if model is missing to avoid stopping simulation
+        return [1.0] * len(df)
+    return model.predict(df[feats])
+```
+
+```{r}
+tryCatch({
+  gc_ms <- read_csv("../../models/final_model_data_20ug.csv") %>%
+  drop_na(BP, `Refractive Index`, TPSA, NHOHCount, NumHDonors, NumRotatableBonds, NOCount)
+}, error = function(e) {
+  message("Warning: final_model_data_20ug.csv missing locally. Creating dummy data structure.")
+  gc_ms <<- data.frame(`20 µg/mL` = 1.0, Predicted_RRF = 1.0)
+})
+```
+
+```{r}
+set.seed(123)
+N_sim <- 10000
+
+N_extractables <- 80
+total_FN <- 0
+total_FP <- 0
+total_TP <- 0
+total_TN <- 0
+
+total_points <- N_sim * N_extractables
+
+
+gc_ms$Predicted_RRF <- tryCatch(
+  py$predict_rrf_raw(gc_ms),
+  error = function(e) {
+    message("Warning: py$predict_rrf_raw failed (", conditionMessage(e),
+            "). Falling back to unit RRF (1.0).")
+    rep(1.0, nrow(gc_ms))
+  }
+)
+
+for (i in 1:N_sim) {
+  sim_data <- gc_ms %>% 
+    sample_n(N_extractables, replace = FALSE)
+  
+  base_conc_sim <- sample(c(x_70, x_20, x_10))
+  
+  sim_RRF <- sim_data$`20 µg/mL`         
+  predicted_RRF <- sim_data$Predicted_RRF 
+  
+  exp_conc <- base_conc_sim * sim_RRF           
+  corrected_conc <- exp_conc / predicted_RRF     
+
+
+is_at_and_above_threshold <- base_conc_sim >= AET
+reported_at_and_above_threshold <- corrected_conc >= AET
+
+## Count per iteration
+  iter_TP <- sum(is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FP <- sum(!is_at_and_above_threshold & reported_at_and_above_threshold, na.rm = TRUE)
+  iter_FN <- sum(is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+  iter_TN <- sum(!is_at_and_above_threshold & !reported_at_and_above_threshold, na.rm = TRUE)
+
+  total_TP <- total_TP + iter_TP
+  total_FP <- total_FP + iter_FP
+  total_FN <- total_FN + iter_FN
+  total_TN <- total_TN + iter_TN
+
+
+  iter_prec <- if((iter_TP + iter_FP) > 0) iter_TP / (iter_TP + iter_FP) else 0
+  iter_rec  <- if((iter_TP + iter_FN) > 0) iter_TP / (iter_TP + iter_FN) else 0
+
+  iter_ActualPos <- iter_TP + iter_FN
+  iter_ActualNeg <- iter_TN + iter_FP
+
+  iter_fnr <- if(iter_ActualPos > 0) iter_FN / iter_ActualPos else 0
+  iter_fpr <- if(iter_ActualNeg > 0) iter_FP / iter_ActualNeg else 0
+  
+  dist_fnr[i] <- iter_fnr * 100
+  dist_fpr[i] <- iter_fpr * 100
+  
+  iter_f1 <- if((iter_prec + iter_rec) > 0) {
+    (2 * iter_prec * iter_rec) / (iter_prec + iter_rec)
+  } else { 0 }
+  
+  denom_beta <- (beta^2 * iter_prec) + iter_rec
+  iter_fbeta <- if(denom_beta > 0) {
+    ((1 + beta^2) * (iter_prec * iter_rec)) / denom_beta
+  } else { 0 }
+  
+  dist_f1[i]   <- iter_f1
+  dist_f5[i]   <- iter_fbeta
+  
+  iter_ActualNeg <- iter_TN + iter_FP
+  iter_Total     <- iter_TP + iter_FP + iter_FN + iter_TN
+  iter_spec      <- if(iter_ActualNeg > 0) iter_TN / iter_ActualNeg else 0}
+
+count_Above_AET <- total_TP + total_FN
+count_Below_AET  <- total_TN + total_FP
+FN_Rate_final <- total_FN / count_Above_AET
+FP_Rate_final <- total_FP / count_Below_AET
+
+recall <- total_TP / count_Above_AET
+precision <- total_TP / (total_TP + total_FP)
+
+F1 <- (2 * precision * recall / (precision + recall))
+beta <- 5
+f_beta <- (1 + beta^2) * (precision * recall) / ((beta^2 * precision) + recall)
+
+SD_FN <- sqrt(FN_Rate_final * (1 - FN_Rate_final) / count_Above_AET)
+SD_FP <- sqrt(FP_Rate_final * (1 - FP_Rate_final) / count_Below_AET)
+
+summary_table <- bind_rows(
+  summary_table,
+  data.frame(
+    Method = "Machine Learning",
+    FN_Rate = FN_Rate_final,
+    FP_Rate = FP_Rate_final,
+    FN_SD = SD_FN,
+    FP_SD = SD_FP,
+    precision = precision,
+    recall = recall,
+    F1 = F1,
+    f_beta = f_beta,
+    # Absolute Counts and UF
+    is_at_and_above_threshold = count_Above_AET,
+    X.is_at_and_above_threshold = count_Below_AET,
+    reported_at_and_above_threshold = total_TP + total_FP,
+    X.reported_at_and_above_threshold = total_TN + total_FN,
+    perc_is_at_and_above_threshold = (count_Above_AET / (count_Above_AET + count_Below_AET)) * 100,
+    perc_reported_at_and_above_threshold = ((total_TP + total_FP) / (count_Above_AET + count_Below_AET)) * 100,
+    UF = NA_real_
+  )
+)
+
+metrics_df <- data.frame(
+  Method = "Machine Learning",
+  F1 = dist_f1,
+  F5 = dist_f5,
+  Percent_FN = dist_fnr,
+  Percent_FP = dist_fpr
+)
+
+all_distributions <- rbind(all_distributions, metrics_df)
+
+```
+
+# Comparisons
+
+```{r}
+method_levels <- c(
+  "No Correction",
+  "UF (2)",
+  "UF (4)",
+  "UF (10)",
+  "UF (RSD)",
+  "UF (RSD filtered)",
+  "UF (µRSD)",
+  "UF (µRSD filtered)",
+  "µ/Percentile (16th)",
+  "Percentile 10th",
+  "Percentile 20th",
+  "RRFlow",
+  "RRF<1",
+  "Machine Learning"
+)
+
+all_distributions$Method <- factor(all_distributions$Method, levels = method_levels)
+```
+
+# FP vs FN
+
+```{r}
+plot_data_FN_FP <- pivot_longer(all_distributions, 
+                          cols = c("F5", "Percent_FN", "Percent_FP"), 
+                          names_to = "Metric", 
+                          values_to = "Value")
+
+plot_data_FN_FP$Method <- factor(plot_data_FN_FP$Method, levels = method_levels)
+
+```
+
+```{r}
+cluster_centers <- all_distributions %>%
+  group_by(Method) %>%
+  summarize(
+    center_FP = mean(Percent_FP, na.rm = TRUE),
+    center_FN = mean(Percent_FN, na.rm = TRUE)
+  )
+
+ggplot(all_distributions, aes(x = Percent_FP, y = Percent_FN, color = Method)) +
+  # Plot the individual simulation dots
+  geom_point(alpha = 0.05, size = 1) +
+  
+  # Draw the 95% confidence ellipses
+  stat_ellipse(linewidth = 1, linetype = 1, type = "norm", level = 0.95) +
+  
+  geom_label_repel(
+    data = cluster_centers, 
+    aes(x = center_FP, y = center_FN, label = Method), 
+    size = 4,
+    fontface = "bold",
+    alpha = 0.9,
+    show.legend = FALSE,
+    box.padding = 0.5,         # Adds "repel force" around the label itself
+    point.padding = 0.5,       # Keeps the label from sitting directly on the exact center coordinate
+    segment.color = "black",   # Makes the pointer line black so it stands out
+    segment.size = 0.8,        # Makes the pointer line a bit thicker
+    max.overlaps = Inf
+  ) +
+  
+  # Clean up the labels and aesthetics
+        labs(
+      title = "Trade-off: False Positives vs. False Negatives",
+      subtitle = paste0("10,000 iterations per Method | AET = ", AET, " µg/mL"),
+      x = "False Positive Rate (%)",
+      y = "False Negative Rate (%)",
+      color = "Correction Method"
+    ) +
+  scale_x_continuous(limits = c(0, 100)) +
+  scale_y_continuous(limits = c(0, 100)) +
+  theme_minimal() +
+  theme(
+    # change "bottom" to "none"!
+    legend.position = "none", 
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+```
+
+# Confusion Matrices (Average over 10,000 iterations)
+
+```{r}
+# 4-column method ordering (groups: fixed-UF | RSD-UF | Percentile | RRF/ML)
+method_levels_4col <- c(
+  "No Correction",
+  "UF (2)",
+  "UF (4)",
+  "UF (10)",
+  "UF (RSD)",
+  "UF (RSD filtered)",
+  "UF (µRSD)",
+  "UF (µRSD filtered)",
+  "µ/Percentile (16th)",
+  "Percentile 10th",
+  "Percentile 20th",
+  "RRFlow",
+  "RRF<1",
+  "Machine Learning"
+)
+
+N_sim <- 10000
+
+# Column guide (sums over N_sim iterations):
+#   is_at_and_above_threshold        = total_TP + total_FN  (all actual positives)
+#   X.is_at_and_above_threshold      = total_TN + total_FP  (all actual negatives)
+#   reported_at_and_above_threshold  = total_TP + total_FP  (all predicted positives)
+#   recall                           = total_TP / actual_positives
+cm_data <- summary_table %>%
+  mutate(
+    total_grand = is_at_and_above_threshold + X.is_at_and_above_threshold,
+    TP = recall * is_at_and_above_threshold,
+    FN = is_at_and_above_threshold - TP,
+    FP = reported_at_and_above_threshold - TP,
+    TN = X.is_at_and_above_threshold - FP,
+    # Percentage of grand total
+    pct_TP = round(TP / total_grand * 100, 1),
+    pct_FP = round(FP / total_grand * 100, 1),
+    pct_FN = round(FN / total_grand * 100, 1),
+    pct_TN = round(TN / total_grand * 100, 1),
+    # Average count per simulation (out of 80 compounds)
+    avg_TP = round(TP / N_sim),
+    avg_FP = round(FP / N_sim),
+    avg_FN = round(FN / N_sim),
+    avg_TN = round(TN / N_sim)
+  ) %>%
+  dplyr::select(Method, pct_TP, pct_FP, pct_FN, pct_TN,
+                         avg_TP, avg_FP, avg_FN, avg_TN)
+
+# ── Per-iteration SD from all_distributions ───────────────────────────────────
+cm_sd_base <- all_distributions %>%
+  left_join(
+    summary_table %>%
+      transmute(
+        Method,
+        total_grand_per_sim = (is_at_and_above_threshold + X.is_at_and_above_threshold) / N_sim,
+        actual_pos_frac     = is_at_and_above_threshold /
+          (is_at_and_above_threshold + X.is_at_and_above_threshold),
+        actual_neg_frac     = X.is_at_and_above_threshold /
+          (is_at_and_above_threshold + X.is_at_and_above_threshold),
+        actual_pos_per_sim  = is_at_and_above_threshold / N_sim,
+        actual_neg_per_sim  = X.is_at_and_above_threshold / N_sim
+      ),
+    by = "Method"
+  ) %>%
+  mutate(
+    # Per-iteration FN / FP / TP / TN as % of grand total
+    sim_pct_FN = (Percent_FN / 100) * actual_pos_frac * 100,
+    sim_pct_FP = (Percent_FP / 100) * actual_neg_frac * 100,
+    sim_pct_TP = actual_pos_frac * 100 - sim_pct_FN,
+    sim_pct_TN = actual_neg_frac * 100 - sim_pct_FP,
+    # Per-iteration FN / FP / TP / TN as counts (out of 80)
+    sim_FN = (Percent_FN / 100) * actual_pos_per_sim,
+    sim_FP = (Percent_FP / 100) * actual_neg_per_sim,
+    sim_TP = actual_pos_per_sim - sim_FN,
+    sim_TN = actual_neg_per_sim - sim_FP
+  ) %>%
+  group_by(Method) %>%
+  summarize(
+    # % SDs
+    sd_pct_TP = round(sd(sim_pct_TP, na.rm = TRUE)),
+    sd_pct_FP = round(sd(sim_pct_FP, na.rm = TRUE)),
+    sd_pct_FN = round(sd(sim_pct_FN, na.rm = TRUE)),
+    sd_pct_TN = round(sd(sim_pct_TN, na.rm = TRUE)),
+    # Count SDs
+    sd_avg_TP = round(sd(sim_TP, na.rm = TRUE)),
+    sd_avg_FP = round(sd(sim_FP, na.rm = TRUE)),
+    sd_avg_FN = round(sd(sim_FN, na.rm = TRUE)),
+    sd_avg_TN = round(sd(sim_TN, na.rm = TRUE))
+  )
+
+cm_tile_theme <- theme_minimal(base_size = 11) +
+  theme(strip.text      = element_text(face = "bold", size = 10),
+        axis.text       = element_text(size = 9),
+        panel.grid      = element_blank(),
+        legend.position = "bottom",
+        plot.title      = element_text(face = "bold", size = 13),
+        plot.subtitle   = element_text(size = 10, color = "grey40"))
+
+cm_fill_scale <- scale_fill_manual(
+  values = c("TP" = "#2E86AB", "TN" = "#2E86AB",
+             "FN" = "#E84855", "FP" = "#F4A261"),
+  guide = guide_legend(title = "Cell type")
+)
+```
+
+# Average count per simulation WITH ± SD
+
+```{r}
+#| warning: false
+# ── Integer count confusion matrix (mean ± SD counts out of 80) ───────────────
+cm_long_counts_sd <- cm_data %>%
+  dplyr::select(Method, avg_TP, avg_FP, avg_FN, avg_TN) %>%
+  pivot_longer(cols = c(avg_TP, avg_FP, avg_FN, avg_TN),
+               names_to = "Cell", values_to = "Count") %>%
+  left_join(
+    cm_sd_base %>%
+      dplyr::select(Method, sd_avg_TP, sd_avg_FP, sd_avg_FN, sd_avg_TN) %>%
+      pivot_longer(cols = c(sd_avg_TP, sd_avg_FP, sd_avg_FN, sd_avg_TN),
+                   names_to = "Cell_sd", values_to = "SD") %>%
+      mutate(Cell = sub("sd_avg_", "avg_", Cell_sd)) %>%
+      dplyr::select(Method, Cell, SD),
+    by = c("Method", "Cell")
+  ) %>%
+  mutate(
+    Predicted = case_when(Cell %in% c("avg_TP", "avg_FP") ~ "Positive",
+                          TRUE ~ "Negative"),
+    Actual    = case_when(Cell %in% c("avg_TP", "avg_FN") ~ "Positive",
+                          TRUE ~ "Negative"),
+    CellType  = toupper(sub("avg_", "", Cell)),
+    Label     = paste0(Count, "±", SD),
+    Predicted = factor(Predicted, levels = c("Positive", "Negative")),
+    Actual    = factor(Actual,    levels = c("Positive", "Negative"))
+  )
+
+cm_long_counts_sd$Method <- factor(cm_long_counts_sd$Method, levels = method_levels)
+
+# 3-column
+ggplot(cm_long_counts_sd, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 1.2) +
+  geom_text(aes(label = Label), size = 3.8, fontface = "bold",
+            color = "white", lineheight = 0.9) +
+  cm_fill_scale +
+  facet_wrap(~ Method, ncol = 3) +
+  labs(title    = "Average Count per Simulation WITH \u00b1 SD",
+       subtitle = paste0("Mean \u00b1 SD counts (out of 80 compounds) over 10,000 iterations | AET = ",
+                         AET, " \u00b5g/mL"),
+       x = "Predicted class (reported vs AET)",
+       y = "Actual class (true vs AET)") +
+  cm_tile_theme
+
+# 4-column
+cm_long_counts_sd_4col <- cm_long_counts_sd
+cm_long_counts_sd_4col$Method <- factor(cm_long_counts_sd_4col$Method,
+                                        levels = method_levels_4col)
+
+ggplot(cm_long_counts_sd_4col, aes(x = Predicted, y = Actual, fill = CellType)) +
+  geom_tile(color = "white", linewidth = 1.2) +
+  geom_text(aes(label = Label), size = 3.8, fontface = "bold",
+            color = "white", lineheight = 0.9) +
+  cm_fill_scale +
+  facet_wrap(~ Method, ncol = 4) +
+  labs(title    = "Average Count per Simulation WITH \u00b1 SD",
+       subtitle = paste0("Mean \u00b1 SD counts (out of 80 compounds) over 10,000 iterations | AET = ",
+                         AET, " \u00b5g/mL"),
+       x = "Predicted class (reported vs AET)",
+       y = "Actual class (true vs AET)") +
+  cm_tile_theme
+
+cm_data %>% dplyr::select(Method, avg_TP, avg_FP, avg_FN, avg_TN)
+```
+
+# Summary Table
+
+```{r}
+all_distributions
+summary_table
+```
