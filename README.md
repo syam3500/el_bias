@@ -102,8 +102,8 @@ The project uses **Python 3.11** for ML notebooks and post-processing helpers, a
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/el-quantification-bias.git
-cd el-quantification-bias
+git clone https://github.com/syam3500/el_bias.git
+cd el_bias
 ```
 
 ### 2. Python environment
