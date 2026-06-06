@@ -275,31 +275,6 @@ Three datasets (GC/MS, LC/MS positive-ion, LC/MS negative-ion) were extracted fr
 
 ---
 
-## Citation
-
-If you use this code, the cleaned datasets, or any of the figures, please cite the thesis:
-
-> Yam, S. (2026). *Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies* [Master's thesis, Hasselt University]. Faculty of Sciences, School for Information Technology.
-
-```bibtex
-@mastersthesis{yam2026elbias,
-  author  = {Yam, Sophie},
-  title   = {Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies},
-  school  = {Hasselt University, Faculty of Sciences -- School for Information Technology},
-  year    = {2026},
-  type    = {Master's thesis, Master of Statistics and Data Science},
-  address = {Hasselt, Belgium}
-}
-```
-
----
-
-## License
-
-The code in this repository is released under the **MIT License**. The raw FDA CLAP PDFs are public-domain US government work. Please respect the licenses of downstream cheminformatics dependencies (RDKit — BSD; PubChemPy — MIT).
-
----
-
 ## Acknowledgements
 
 This thesis was completed under the supervision of **Dr. Stijn Jaspers** (Hasselt University), whose statistical expertise and constructive feedback shaped the methodological foundation of this work, and **Dr. Rodrigo Feliciano** (Johnson & Johnson Innovative Medicine), who proposed the research question, provided the applied extractables and leachables context, and offered invaluable guidance throughout the project.
@@ -322,10 +297,6 @@ If you use this code, the cleaned datasets, or any of the figures, please cite t
   address = {Hasselt, Belgium}
 }
 ```
-
----
-
-
 
 ## License
 
