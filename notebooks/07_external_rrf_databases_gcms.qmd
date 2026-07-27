@@ -1,0 +1,801 @@
+---
+title: "GC/MS RRF distributions and uncertainty factors"
+subtitle: "Censored Normal, log-normal and gamma fits and UF values for published GC/MS RRF databases (Christiaens 2020, Norwood 2012, Zdravkovic 2018, Kritikos 2023, Deng 2026), plus UF-only entries computed from published mean/RSD for Jenke 2022, Jordi 2020 and Jenke 2024. Structure follows RRFdistcens_figure4.qmd."
+format: html
+editor: visual
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(fitdistrplus)
+library(patchwork)
+```
+
+# Data
+
+RRF values were read from the source PDFs and are inlined below as vectors:
+
+- Christiaens 2020 — Table I excerpt, 40 compounds, RRF against 2-fluorobiphenyl.
+- Norwood 2012 — Table 5.1, 31 compounds, two series against two internal standards: 2-fluorobiphenyl (published mean 0.623, SD 0.270, %RSD 43.3) and p-terphenyl-d14 (published mean 0.473, SD 0.197, %RSD 41.6). Both are reproduced by the extraction and both are fitted below.
+- Zdravkovic 2018 — Table 4 overall mean RRF (n = 32 replicates per compound). Only the 97 non-derivatized ("As is") compounds are kept; the 57 TMS/TFA-derivatized compounds are excluded, since their RRFs reflect the derivative, not the native analyte.
+- Kritikos 2023 — the GC-MS subset only (42 compounds, including the IS itself, dodec-1-ene, RRF = 1.0; RRF against dodec-1-ene). The paper also reports LC-MS positive/negative data, which is out of scope for this GC/MS file.
+- Deng 2026 — Table IV, the 13 GC-MS compounds (aromatic/alcohol subset) for which a measured RRF is reported alongside the ML-predicted value. This is the only place in the paper individual measured GC/MS RRFs are given; the paper does not state a single named surrogate for these measurements. The full 49-compound out-of-sample set (Table II) reports predicted concentration and % accuracy only, not RRF, so it cannot be used here.
+- FDA CLAP (Chemicals List for Analytical Performance) — the 92-compound GC-MS reference standard list (`processed_data/GCMS.xlsx`), including the IS itself (2,4-di-tert-butylphenol, RRF = 1.0), RRF against 2,4-di-tert-butylphenol, reported at three spiking levels (5, 10, 20 µg/mL). All three levels are kept as separate series, following the same rationale as the two Norwood series above. 0 = not detected; these are left-censored at the LOQ like everywhere else in this file.
+
+Three further datasets report only summary statistics (mean, SD/RSD, n) for their GC/MS RRF population, not individual compound values, so they cannot be Turnbull-fitted and are included in the Uncertainty Factors section only, using their published mean and RSD directly:
+
+- Jenke 2022 — Table II, Nelson GC/MS RRF database, "all compounds" row (n = 1193, mean = 0.524, RSD = 66.8%, RRF against 2-fluorobiphenyl). Table III only lists an unrepresentative 25-compound low-responder excerpt, not the full database.
+- Jordi 2020 — Table 1, normalized GC-MS RRF distribution (n = 128 detected of 217 tested, mean = 1.0 by normalization, RSD = 52%, RRF against decane).
+- Jenke 2024 (JenkeC2024) — Table 1, expanded Nelson GC/MS RRF database, "All Data" column (n = 3215, mean = 0.5433, RSD = 61.72%, RRF against 2-fluorobiphenyl).
+
+Each database uses its own internal standard/surrogate, so the UF values below are read per dataset and are not pooled across datasets. The surrogate used by each dataset is listed as a column in the Uncertainty Factors table.
+
+**Censoring convention (Turnbull NPMLE):** values that are 0 or at/below the LOQ (0.001) are treated as left-censored at the LOQ rather than dropped.
+
+```{r}
+chri <- c(
+  1.13, 0.413, 0.758, 0.984, 0.352, 0.281, 0.557, 0.53, 0.912, 0.539, 0.884, 0.557, 0.59,
+  0.697, 0.676, 0.581, 0.119, 0.833, 0.571, 0.728, 0.636, 0.123, 0.378, 0.443, 0.835,
+  0.556, 0.119, 0.636, 0.862, 0.532, 0.748, 0.183, 0.636, 0.437, 0.672, 0.872, 0.334,
+  0.367, 0.746, 0.783
+)
+
+# Norwood Table 5.1 gives two RRF series for the same 31 compounds, against two
+# internal standards. Both are kept.
+norw_fb <- c(   # RRF relative to 2-fluorobiphenyl
+  0.563, 0.368, 0.491, 0.574, 0.383, 0.942, 0.245, 1.062, 0.883, 0.38, 0.824, 0.422,
+  0.843, 0.071, 0.377, 0.245, 1.211, 0.565, 0.385, 0.568, 0.519, 0.584, 0.83, 0.574, 0.87,
+  0.542, 0.766, 0.822, 1.118, 0.644, 0.648
+)
+norw_tph <- c(  # RRF relative to p-terphenyl-d14
+  0.395, 0.248, 0.336, 0.372, 0.231, 0.639, 0.235, 0.694, 0.634, 0.256, 0.527, 0.368,
+  0.625, 0.0495, 0.274, 0.248, 0.84, 0.4, 0.274, 0.402, 0.666, 0.424, 0.636, 0.639, 0.654,
+  0.43, 0.63, 0.668, 0.781, 0.668, 0.414
+)
+
+# Non-derivatized compounds only ("As is" in Table 2). The 57 TMS/TFA-derivatized
+# compounds (acids, alcohols, amines, amides, diols) are excluded, leaving 97.
+zdra <- c(
+  0.972, 0.91, 0.697, 0.664, 0.767, 1.134, 1.049, 1.89, 1.464, 0.819, 1.163, 1.233, 1.161,
+  0.79, 0.912, 0.814, 0.946, 1.636, 1.321, 0.951, 1.226, 0.989, 0.919, 1.372, 1.307,
+  1.093, 1.075, 2.796, 1.108, 0.998, 1.412, 1.348, 1.742, 1.572, 2.166, 1.102, 1.502,
+  1.391, 1.029, 0.858, 1.675, 1.689, 1.167, 1.211, 1.037, 1.492, 0.963, 1.326, 2.623,
+  1.224, 0.715, 1.516, 1.478, 0.896, 1.46, 1.52, 1.58, 0.965, 1.262, 1.218, 1.876, 1.537,
+  1.223, 1.211, 1.544, 1.763, 1.213, 1.529, 0.95, 1.54, 1.008, 1.85, 1.708, 0.592, 1.17,
+  1.396, 1.456, 1.215, 0.885, 1.957, 1.405, 2.357, 1.162, 1.32, 0.945, 1.149, 1.189,
+  1.053, 1.677, 1.759, 0.996, 1.576, 1.519, 1.425, 0.702, 0.245, 1.295
+)
+
+# Kritikos 2023 GC-MS subset (42 compounds), RRF against dodec-1-ene.
+# The IS's own entry (dodec-1-ene, RRF = 1.0 by definition) is included.
+kritikos <- c(
+  2.918311, 2.689202, 1.09112, 2.606271, 3.388957, 1.756355, 1.809912, 1.155119, 0.118364,
+  2.813384, 2.205471, 1.286836, 2.620808, 0.173721, 1.667242, 1.213739, 1.149466, 0.265688,
+  0.45312, 0.75899, 1.913178, 0.835508, 1.053394, 0.329583, 1.004294, 1.83916, 1.666906,
+  2.335566, 1.221973, 1.564578, 1.06068, 1.114498, 2.5994, 1.202359, 2.764906, 0.322087,
+  0.469042, 0.662546, 2.214299, 0.684341, 1.412457, 1.0
+)
+
+# Deng 2026 Table IV, measured RRF for the 13 GC-MS compounds (aromatic/alcohol subset).
+deng <- c(
+  1.078, 0.886, 0.939, 0.158, 0.594, 0.727, 1.054, 0.548, 0.560, 0.106, 1.050, 0.742, 0.840
+)
+
+# FDA CLAP (Chemicals List for Analytical Performance) GC-MS reference standard list,
+# processed_data/GCMS.xlsx, sheet "GC-MS". 92 compounds, including the IS itself
+# (2,4-di-tert-butylphenol, RRF = 1.0 at every level by definition). Reported
+# at three spiking levels; 0 = not detected, kept as 0 so make_cens() left-censors it at LOQ.
+clap5 <- c(
+  0, 0.326, 0.414, 1.828, 0.71, 0.606, 0.823, 0.713, 0.18, 0.364, 0.503, 0.214, 0.066,
+  0.143, 0.033, 0.295, 0.182, 1.262, 1.076, 0.663, 0, 0.377, 0.014, 0.654, 0.001, 0.084,
+  0.707, 0.297, 2.551, 0.206, 0, 0.457, 0.001, 0.176, 0.101, 0.121, 0.208, 0.099, 0, 0,
+  0.863, 1.53, 0.687, 0.615, 0.142, 0.104, 0.001, 0.001, 1.508, 0, 0.734, 0.632, 0.274,
+  0.302, 0.106, 0.708, 0.377, 0.468, 0.14, 0, 0.022, 0.001, 0.266, 0.333, 0.042, 0.175,
+  0.001, 0, 0.51, 0.277, 0.001, 0.001, 0.09, 0.135, 0.161, 0.401, 0.296, 0.001, 0.189,
+  0.196, 0.255, 0.001, 0, 0.472, 0.17, 1.339, 0.274, 0.728, 1.444, 0, 0.001, 1.0
+)
+clap10 <- c(
+  0, 0.434, 0.393, 2.143, 0.377, 0.506, 0.824, 0.744, 0.437, 0.383, 0.47, 0.289, 0.241,
+  0.165, 0.035, 0.288, 0.575, 1.828, 0.773, 0.609, 0, 0.393, 0.022, 0.741, 0.001, 0.121,
+  0.733, 0.282, 2.006, 0.172, 0, 0.442, 0.001, 0.201, 0.136, 0.144, 0.297, 0.152, 0, 0,
+  0.891, 1.467, 0.724, 0.527, 0.243, 0.107, 0.001, 0.001, 1.98, 0, 0.866, 0.661, 0.297,
+  0.337, 0.145, 0.674, 0.378, 0.451, 0.259, 0, 0.099, 0.001, 0.292, 0.356, 0.038, 0.286,
+  0.001, 0, 0.527, 0.294, 0.001, 0.001, 0.14, 0.142, 0.233, 0.394, 0.312, 0.001, 0.22,
+  0.21, 0.253, 0.031, 0, 0.547, 0.219, 1.572, 0.347, 0.737, 1.765, 0, 0.028, 1.0
+)
+clap20 <- c(
+  0, 0.336, 0.281, 1.81, 0.424, 0.583, 0.838, 0.822, 0.676, 0.476, 0.525, 0.413, 0.314,
+  0.086, 0.04, 0.275, 0.723, 1.537, 1.134, 0.625, 0, 0.451, 0.023, 0.896, 0.035, 0.166,
+  0.725, 0.31, 1.653, 0.175, 0, 0.58, 0.001, 0.214, 0.15, 0.142, 0.378, 0.022, 0, 0,
+  0.857, 1.358, 0.737, 0.606, 0.377, 0.149, 0.001, 0.001, 1.768, 0, 0.967, 0.69, 0.355,
+  0.383, 0.205, 0.668, 0.396, 0.616, 0.245, 0, 0.163, 0.001, 0.265, 0.347, 0.037, 0.238,
+  0.001, 0, 0.443, 0.274, 0.001, 0.001, 0.163, 0.154, 0.22, 0.285, 0.317, 0.035, 0.23,
+  0.166, 0.172, 0.058, 0, 0.551, 0.25, 1.535, 0.4, 0.691, 1.645, 0, 0.088, 1.0
+)
+
+loq <- 0.001            # limit of quantification used as right-bound for censored obs.
+gamma_params <- data.frame()
+norm_params  <- data.frame()
+aic_params   <- data.frame()
+
+# Helper: build the two-column censored data frame for fitdistcens
+# Detected (v > loq)  → left = right = v        (exact observation)
+# N.D. / BDL / NA     → left = NA, right = loq   (left-censored)
+make_cens <- function(v) {
+  v <- as.numeric(v)
+  data.frame(
+    left  = ifelse(is.na(v) | v <= loq, NA,  v),
+    right = ifelse(is.na(v) | v <= loq, loq, v)
+  )
+}
+```
+
+# GC/MS Analysis
+
+## Christiaens 2020
+
+```{r}
+cens_data <- make_cens(chri)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Christiaens 2020",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Christiaens 2020",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Christiaens 2020",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20,
+                 fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,   args = list(mean  = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm,  args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma,  args = list(shape = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                     values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Christiaens 2020: Fit Comparison", x = "RRF", y = "Density") +
+  theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Norwood 2012 (2-fluorobiphenyl)
+
+```{r}
+cens_data <- make_cens(norw_fb)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Norwood 2012 (2-FB)",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Norwood 2012 (2-FB)",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Norwood 2012 (2-FB)",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                     values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Norwood 2012 (2-FB): Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Norwood 2012 (p-terphenyl-d14)
+
+```{r}
+cens_data <- make_cens(norw_tph)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Norwood 2012 (p-terphenyl-d14)",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Norwood 2012 (p-terphenyl-d14)",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Norwood 2012 (p-terphenyl-d14)",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                     values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Norwood 2012 (p-terphenyl-d14): Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Zdravkovic 2018
+
+```{r}
+cens_data <- make_cens(zdra)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Zdravkovic 2018",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Zdravkovic 2018",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Zdravkovic 2018",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                     values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Zdravkovic 2018: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Kritikos 2023
+
+```{r}
+cens_data <- make_cens(kritikos)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Kritikos 2023",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Kritikos 2023",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Kritikos 2023",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Kritikos 2023: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Deng 2026
+
+```{r}
+cens_data <- make_cens(deng)
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm")
+flnorm <- fitdistcens(cens_data, "lnorm")
+fgamma <- fitdistcens(cens_data, "gamma")
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "Deng 2026",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "Deng 2026",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "Deng 2026",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "Deng 2026: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## CLAP 5 µg/mL
+
+```{r}
+cens_data <- make_cens(clap5)
+det <- cens_data$right[!is.na(cens_data$left)]
+m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = 0, sd = 1e-4))
+flnorm <- fitdistcens(cens_data, "lnorm",
+                       start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
+                       optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
+fgamma <- fitdistcens(cens_data, "gamma",
+                       start = list(shape = (m/s)^2, rate = m/s^2),
+                       optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "CLAP 5 µg/mL",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "CLAP 5 µg/mL",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP 5 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "CLAP 5 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## CLAP 10 µg/mL
+
+```{r}
+cens_data <- make_cens(clap10)
+det <- cens_data$right[!is.na(cens_data$left)]
+m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = 0, sd = 1e-4))
+flnorm <- fitdistcens(cens_data, "lnorm",
+                       start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
+                       optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
+fgamma <- fitdistcens(cens_data, "gamma",
+                       start = list(shape = (m/s)^2, rate = m/s^2),
+                       optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "CLAP 10 µg/mL",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "CLAP 10 µg/mL",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP 10 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "CLAP 10 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## CLAP 20 µg/mL
+
+```{r}
+cens_data <- make_cens(clap20)
+det <- cens_data$right[!is.na(cens_data$left)]
+m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
+
+set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = 0, sd = 1e-4))
+flnorm <- fitdistcens(cens_data, "lnorm",
+                       start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
+                       optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
+fgamma <- fitdistcens(cens_data, "gamma",
+                       start = list(shape = (m/s)^2, rate = m/s^2),
+                       optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
+
+summary(fnorm); summary(flnorm); summary(fgamma)
+
+aic_params <- rbind(aic_params, data.frame(
+  Dataset = "CLAP 20 µg/mL",
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+))
+
+gamma_params <- rbind(gamma_params, data.frame(
+  Dataset = "CLAP 20 µg/mL",
+  shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
+))
+
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP 20 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
+RRF_df <- data.frame(RRF = cens_data$right)
+p_fit <- ggplot(RRF_df, aes(x = RRF)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
+  stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
+  stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
+  scale_color_manual(name = "Distribution",
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "CLAP 20 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
+p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
+  stat_qq_line(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), color = "darkred", linewidth = 1) +
+  labs(title = "Log-normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), alpha = 0.5) +
+  stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
+  labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
+
+(qq_norm + qq_lnorm + qq_gamma)
+```
+
+## Normal parameters
+
+Mean and SD from the censored Normal fit per dataset. These are the parameters used when the RRFs are treated as normally distributed (the assumption behind the ISO 10993-18 UF formula).
+
+```{r}
+norm_params
+```
+
+## AIC model comparison
+
+AIC for the three censored fits (Normal, log-normal, gamma) per dataset (all nine with raw compound-level data). The `Best` column is computed directly from the fitted AIC values, not assumed.
+
+```{r}
+aic_params$Best <- c("Normal", "LogNormal", "Gamma")[apply(aic_params[, c("Normal","LogNormal","Gamma")], 1, which.min)]
+aic_params[, c("Normal","LogNormal","Gamma")] <- round(aic_params[, c("Normal","LogNormal","Gamma")], 2)
+aic_params
+```
+
+```{r}
+aic_params %>%
+  dplyr::select(Dataset, Normal, LogNormal, Gamma) %>%
+  pivot_longer(-Dataset, names_to = "Distribution", values_to = "AIC") %>%
+  ggplot(aes(x = Dataset, y = AIC, fill = Distribution)) +
+  geom_col(position = position_dodge(0.8), width = 0.8) +
+  scale_fill_manual(values = c("Normal" = "darkblue", "LogNormal" = "darkred", "Gamma" = "darkgreen")) +
+  labs(title = "AIC by dataset and distribution (lower = better fit)", x = NULL, y = "AIC") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+# Uncertainty Factors
+
+Three UF forms are computed from the detected RRFs (v \> loq) of each dataset:
+
+- 1 / μ
+- UF (ISO 10993-18:2022) = 1 / (1 − RSD)
+- UF (corrected) = 1 / \[μ (1 − RSD)\]
+
+where μ is the mean RRF and RSD = σ / μ. The corrected form adds back the 1/μ factor that the ISO form omits (manuscript Eq. 7). The ISO and corrected forms are undefined when RSD ≥ 1; those cells are set to NA.
+
+For Jenke 2022, Jordi 2020 and Jenke 2024, mean and RSD are taken directly from the source (see Data section) rather than computed from raw values, since no individual compound-level data is available.
+
+```{r}
+surrogates <- c(
+  "Christiaens 2020"                = "2-fluorobiphenyl",
+  "Norwood 2012 (2-FB)"             = "2-fluorobiphenyl",
+  "Norwood 2012 (p-terphenyl-d14)"  = "p-terphenyl-d14",
+  "Zdravkovic 2018"                 = "acetophenone-d5",
+  "Kritikos 2023"                   = "dodec-1-ene",
+  "Deng 2026"                       = "not stated",
+  "CLAP 5 µg/mL"                    = "2,4-di-tert-butylphenol",
+  "CLAP 10 µg/mL"                   = "2,4-di-tert-butylphenol",
+  "CLAP 20 µg/mL"                   = "2,4-di-tert-butylphenol",
+  "Jenke 2022"                      = "2-fluorobiphenyl",
+  "Jordi 2020"                      = "decane",
+  "Jenke 2024"                      = "2-fluorobiphenyl"
+)
+
+gcms_list <- list("Christiaens 2020"                = chri,
+                  "Norwood 2012 (2-FB)"            = norw_fb,
+                  "Norwood 2012 (p-terphenyl-d14)" = norw_tph,
+                  "Zdravkovic 2018"                = zdra,
+                  "Kritikos 2023"                  = kritikos,
+                  "Deng 2026"                       = deng,
+                  "CLAP 5 µg/mL"                    = clap5,
+                  "CLAP 10 µg/mL"                   = clap10,
+                  "CLAP 20 µg/mL"                   = clap20)
+
+# CLAP rows use every value (non-detects as 0, IS included) so n = 92, per explicit
+# instruction. Every other dataset keeps the file's default detected-only (v > loq) convention.
+use_all_values <- c("CLAP 5 µg/mL", "CLAP 10 µg/mL", "CLAP 20 µg/mL")
+
+gcms_uf <- data.frame()
+for (nm in names(gcms_list)) {
+  x <- as.numeric(gcms_list[[nm]])
+  if (!(nm %in% use_all_values)) x <- x[!is.na(x) & x > loq]
+  mu  <- mean(x); s <- sd(x); rsd <- s / mu; ok <- rsd < 1
+  gcms_uf <- rbind(gcms_uf, data.frame(
+    Dataset      = nm,
+    Surrogate    = surrogates[[nm]],
+    n            = length(x),
+    mean         = round(mu, 3),
+    sd           = round(s, 3),
+    RSD          = round(rsd, 3),
+    one_mean      = round(1 / mu, 2),
+    UF_ISO       = ifelse(ok, round(1 / (1 - rsd), 2), NA),
+    UF_corrected = ifelse(ok, round(1 / (mu * (1 - rsd)), 2), NA)
+  ))
+}
+
+# Datasets with published summary statistics only (no raw compound-level RRF values).
+summary_only <- data.frame(
+  Dataset = c("Jenke 2022", "Jordi 2020", "Jenke 2024"),
+  n       = c(1193,          128,           3215),
+  mean    = c(0.524,         1.0,           0.5433),
+  sd      = c(0.351,         0.52,          0.3353)
+)
+summary_only$RSD          <- round(summary_only$sd / summary_only$mean, 3)
+summary_only$Surrogate    <- surrogates[summary_only$Dataset]
+summary_only$one_mean      <- round(1 / summary_only$mean, 2)
+ok                          <- summary_only$RSD < 1
+summary_only$UF_ISO       <- ifelse(ok, round(1 / (1 - summary_only$RSD), 2), NA)
+summary_only$UF_corrected <- ifelse(ok, round(1 / (summary_only$mean * (1 - summary_only$RSD)), 2), NA)
+
+gcms_uf <- rbind(gcms_uf, summary_only[, names(gcms_uf)])
+gcms_uf
+```
+
+```{r}
+gcms_uf %>%
+  dplyr::select(Dataset, one_mean, UF_ISO, UF_corrected) %>%
+  pivot_longer(-Dataset, names_to = "UF_type", values_to = "UF") %>%
+  ggplot(aes(x = Dataset, y = UF, fill = UF_type)) +
+  geom_col(position = position_dodge(0.8), width = 0.8) +
+  geom_text(aes(label = ifelse(is.na(UF), "NA", format(UF, nsmall = 2))),
+            position = position_dodge(0.8), vjust = -0.3, size = 3) +
+  scale_fill_manual(name = "UF form",
+                    values = c("one_mean" = "grey", "UF_ISO" = "darkred", "UF_corrected" = "darkgreen")) +
+  labs(title = "GC/MS uncertainty factors by dataset", x = NULL, y = "UF") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+# References
+
+- Christiaens, P.; Beusen, J.-M.; Verlinde, P.; Baeten, J.; Jenke, D. Identifying and Mitigating Errors in Screening for Organic Extractables and Leachables: Part 1 — Introduction to Errors in Chromatographic Screening for Organic Extractables and Leachables and Discussion of the Errors of Omission. *PDA J. Pharm. Sci. Technol.* **2020**, *74*, 90–107. doi:10.5731/pdajpst.2018.009761.
+- Norwood, D. L.; Mullis, J. O.; Pennino, S. J. Chapter 5: The Analytical Evaluation Threshold (AET) and Its Relationship to Safety Thresholds. In *Leachables and Extractables Handbook: Safety Evaluation, Qualification, and Best Practices Applied to Inhalation Drug Products*, 1st ed.; Ball, D. J., Norwood, D. L., Stults, C. L. M., Nagao, L. M., Eds.; John Wiley & Sons: Hoboken, NJ, 2012; pp 59–91. doi:10.1002/9781118147672.ch5.
+- Zdravkovic, S. A.; Duong, C. T.; Hellenbrand, A. A.; Duff, S. R.; Dreger, A. L. Establishment of a Reference Standard Database for Use in the Qualitative and Semi-Quantitative Analysis of Pharmaceutical Contact Materials within an Extractables Survey by GC-MS. *J. Pharm. Biomed. Anal.* **2018**, *151*, 49–60. doi:10.1016/j.jpba.2017.12.054.
+- Kritikos, N.; Bletsou, A.; Konstantinou, C.; Neofotistos, A.-D.; Kousoulos, C.; Dotsikas, Y. Determination of Response Factors for Analytes Detected during Migration Studies, Strategy and Internal Standard Selection for Risk Minimization. *Molecules* **2023**, *28*, 5772. doi:10.3390/molecules28155772.
+- Deng, Y.; Grice, A.; Louis, M.; Lerner, K.; Rowland, K. Neural Network Prediction of Response Factors for Extractables and Leachables in Pharmaceuticals and Medical Devices. *PDA J. Pharm. Sci. Technol.* **2026**. doi:10.5731/pdajpst.2025-000061.1.
+- U.S. Food and Drug Administration, Center for Devices and Radiological Health. *Chemicals List for Analytical Performance (CLAP)*, RST24MC05.01, 2024. https://cdrh-rst.fda.gov/chemicals-list-analytical-performance-clap.
+- Jenke, D.; Christiaens, P.; Beusen, J.-M.; Verlinde, P.; Baeten, J. A Practical Derivation of the Uncertainty Factor Applied to Adjust the Extractables/Leachables Analytical Evaluation Threshold (AET) for Response Factor Variation. *PDA J. Pharm. Sci. Technol.* **2022**, *76*, 178–199. doi:10.5731/pdajpst.2021.012692.
+- Jordi, M. A.; Rowland, K.; Liu, W.; Cao, X.; Zong, J.; Ren, Y.; Liang, Z.; Zhou, X.; Louis, M.; Lerner, K. Reducing Relative Response Factor Variation Using a Multidetector Approach for Extractables and Leachables (E&L) Analysis to Mitigate the Need for Uncertainty Factors. *J. Pharm. Biomed. Anal.* **2020**, *186*, 113334. doi:10.1016/j.jpba.2020.113334.
+- Jenke, D.; Christiaens, P.; Verlinde, P.; Baeten, J.; Beusen, J.-M. Correlating GC/MS Relative Response Factors to Analyte's Physicochemical and Chromatographic Properties to Facilitate the Quantitation of Organic Extractables and Leachables in Non-Targeted Analysis (NTA) I. Concepts and Empirical Considerations. *PDA J. Pharm. Sci. Technol.* **2024**, *78* (6). doi:10.5731/pdajpst.2023.012884.
