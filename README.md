@@ -47,7 +47,8 @@
 │   ├── 05_ml_rrf_prediction_10ug.ipynb   ← RF / SVR / ElasticNet training, 10 µg/mL surrogate
 │   ├── 06_ml_rrf_prediction_20ug.ipynb   ← RF / SVR / ElasticNet training, 20 µg/mL surrogate
 │   ├── 07_external_rrf_databases_gcms.qmd ← external GC/MS RRF databases: fits + UF (Suppl. S3)
-│   └── 08_external_rrf_databases_lcms.qmd ← external LC/MS RRF databases: fits + UF (Suppl. S3)
+│   ├── 08_external_rrf_databases_lcms.qmd ← external LC/MS RRF databases: fits + UF (Suppl. S3)
+│   └── 08_external_rrf_databases_lcms.html ← rendered output (fits, AIC table, Q–Q panels)
 │
 ├── scripts/
 │   ├── simulation/                    ← core Monte Carlo engine (R + Quarto, 55 files)
@@ -101,7 +102,8 @@ response-factor corrections"* to the file that produces it.
 
 | Manuscript section | Supplementary | File |
 |---|---|---|
-| 2.1 Data sources — RRF distribution fitting | S1 | `notebooks/03_explore_rrf_censored_distributions.qmd` |
+| 2.1 Data sources — RRF distribution fitting (Table S1.1, figures) | S1 | `notebooks/03_explore_rrf_censored_distributions.qmd` |
+| 2.1 Data sources — censored fits behind Table S1.2 | S1 | `notebooks/08_external_rrf_databases_lcms.qmd` |
 | 2.1 Data sources — concentration fitting | S2 | `notebooks/02_explore_pooled_concentration_distributions.qmd` |
 | 3.1 Simulation convergence and reporting | S7 | `scripts/simulation/LC_MS-_5_2A_LC_convcheck.qmd` |
 | 3.2 External validation of the RRF fitted distributions (Table 2), GC/MS | S3 | `notebooks/07_external_rrf_databases_gcms.qmd` |
@@ -116,7 +118,12 @@ response-factor corrections"* to the file that produces it.
 
 Notebooks `07` and `08` fit censored normal, log-normal and gamma distributions to published
 RRF databases and compute UF(RSD) and UF(µRSD) for each, which is how the manuscript tests
-whether the CLAP findings generalise beyond a single 106-compound list. Both notebooks are
+whether the CLAP findings generalise beyond a single 106-compound list. Notebook `08` also
+supplies the CLAP LC/MS parameters reported in Supplementary Table S1.2 and used for RRF
+sampling in the LC/MS simulations. All three distributions are fitted at every level; for
+LC/MS NEG the censored-normal fit converges but returns a negative mean, which is not
+physically possible for an RRF, so it is reported for comparison only and the gamma fit
+(lowest AIC) is the one sampled. Both notebooks are
 **self-contained**: every RRF value is inlined as a vector in the document, with the source
 table and surrogate stated per database, so they run without any external data file.
 

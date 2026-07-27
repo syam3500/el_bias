@@ -647,7 +647,7 @@ qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
 
 ## CLAP LC-MS NEG — 5 µg/mL
 
-Only 9 of 28 compounds are detected at this level; Normal is not fitted (per the same choice made for this exact data in `RRF_dist_AIC_comparison_v2.qmd`) since 9 points give a very poor censored-Normal fit. Log-normal and gamma only.
+Only 9 of 28 compounds are detected at this level. All three distributions are now fitted so that the model-selection table is complete. The censored-Normal fit converges but returns a negative mean, which is not physically possible for an RRF, so it is reported for comparison and rejected on physical grounds — the same argument applied to the Jordi NEG dataset in the GC/MS companion file. Gamma has the lowest AIC and is the distribution sampled in the simulation.
 
 ```{r}
 cens_data <- make_cens(clap_neg5)
@@ -655,6 +655,9 @@ det <- cens_data$right[!is.na(cens_data$left)]
 m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
 
 set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = -Inf, sd = 1e-4))
 flnorm <- fitdistcens(cens_data, "lnorm",
                        start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
                        optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
@@ -662,11 +665,11 @@ fgamma <- fitdistcens(cens_data, "gamma",
                        start = list(shape = (m/s)^2, rate = m/s^2),
                        optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
 
-summary(flnorm); summary(fgamma)
+summary(fnorm); summary(flnorm); summary(fgamma)
 
 aic_params <- rbind(aic_params, data.frame(
   Dataset = "CLAP LC-MS NEG 5 µg/mL",
-  Normal = NA_real_, LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
 ))
 
 gamma_params <- rbind(gamma_params, data.frame(
@@ -674,15 +677,26 @@ gamma_params <- rbind(gamma_params, data.frame(
   shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
 ))
 
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP LC-MS NEG 5 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
 RRF_df <- data.frame(RRF = cens_data$right)
 p_fit <- ggplot(RRF_df, aes(x = RRF)) +
   geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
   stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
   stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
   scale_color_manual(name = "Distribution",
-                    values = c("Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
   labs(title = "CLAP LC-MS NEG 5 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
 p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
 qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
@@ -694,7 +708,7 @@ qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
   labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
-(qq_lnorm + qq_gamma)
+(qq_norm + qq_lnorm + qq_gamma)
 ```
 
 ## CLAP LC-MS NEG — 10 µg/mL
@@ -705,6 +719,9 @@ det <- cens_data$right[!is.na(cens_data$left)]
 m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
 
 set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = -Inf, sd = 1e-4))
 flnorm <- fitdistcens(cens_data, "lnorm",
                        start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
                        optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
@@ -712,11 +729,11 @@ fgamma <- fitdistcens(cens_data, "gamma",
                        start = list(shape = (m/s)^2, rate = m/s^2),
                        optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
 
-summary(flnorm); summary(fgamma)
+summary(fnorm); summary(flnorm); summary(fgamma)
 
 aic_params <- rbind(aic_params, data.frame(
   Dataset = "CLAP LC-MS NEG 10 µg/mL",
-  Normal = NA_real_, LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
 ))
 
 gamma_params <- rbind(gamma_params, data.frame(
@@ -724,15 +741,26 @@ gamma_params <- rbind(gamma_params, data.frame(
   shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
 ))
 
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP LC-MS NEG 10 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
 RRF_df <- data.frame(RRF = cens_data$right)
 p_fit <- ggplot(RRF_df, aes(x = RRF)) +
   geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
   stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
   stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
   scale_color_manual(name = "Distribution",
-                    values = c("Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
   labs(title = "CLAP LC-MS NEG 10 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
 p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
 qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
@@ -744,7 +772,7 @@ qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
   labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
-(qq_lnorm + qq_gamma)
+(qq_norm + qq_lnorm + qq_gamma)
 ```
 
 ## CLAP LC-MS NEG — 20 µg/mL
@@ -755,6 +783,9 @@ det <- cens_data$right[!is.na(cens_data$left)]
 m <- mean(det); s <- sd(det); cv2 <- (s/m)^2
 
 set.seed(123)
+fnorm  <- fitdistcens(cens_data, "norm",
+                       start = list(mean = m, sd = s),
+                       optim.method = "L-BFGS-B", lower = c(mean = -Inf, sd = 1e-4))
 flnorm <- fitdistcens(cens_data, "lnorm",
                        start = list(meanlog = log(m) - 0.5*log(1+cv2), sdlog = sqrt(log(1+cv2))),
                        optim.method = "L-BFGS-B", lower = c(meanlog = -Inf, sdlog = 1e-4))
@@ -762,11 +793,11 @@ fgamma <- fitdistcens(cens_data, "gamma",
                        start = list(shape = (m/s)^2, rate = m/s^2),
                        optim.method = "L-BFGS-B", lower = c(shape = 1e-4, rate = 1e-4))
 
-summary(flnorm); summary(fgamma)
+summary(fnorm); summary(flnorm); summary(fgamma)
 
 aic_params <- rbind(aic_params, data.frame(
   Dataset = "CLAP LC-MS NEG 20 µg/mL",
-  Normal = NA_real_, LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
+  Normal = AIC(fnorm), LogNormal = AIC(flnorm), Gamma = AIC(fgamma)
 ))
 
 gamma_params <- rbind(gamma_params, data.frame(
@@ -774,15 +805,26 @@ gamma_params <- rbind(gamma_params, data.frame(
   shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]
 ))
 
+norm_params <- rbind(norm_params, data.frame(
+  Dataset = "CLAP LC-MS NEG 20 µg/mL",
+  mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]
+))
+
 RRF_df <- data.frame(RRF = cens_data$right)
 p_fit <- ggplot(RRF_df, aes(x = RRF)) +
   geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightgray", color = "white", na.rm = TRUE) +
+  stat_function(fun = dnorm,  args = list(mean    = fnorm$estimate["mean"],    sd    = fnorm$estimate["sd"]),       aes(color = "Normal"),     linewidth = 1) +
   stat_function(fun = dlnorm, args = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), aes(color = "Log-normal"), linewidth = 1) +
   stat_function(fun = dgamma, args = list(shape   = fgamma$estimate["shape"],  rate  = fgamma$estimate["rate"]),   aes(color = "Gamma"),      linewidth = 1) +
   scale_color_manual(name = "Distribution",
-                    values = c("Log-normal" = "darkred", "Gamma" = "darkgreen")) +
+                    values = c("Normal" = "darkblue", "Log-normal" = "darkred", "Gamma" = "darkgreen")) +
   labs(title = "CLAP LC-MS NEG 20 µg/mL: Fit Comparison", x = "RRF", y = "Density") + theme_minimal()
 p_fit
+
+qq_norm  <- ggplot(RRF_df, aes(sample = RRF)) +
+  stat_qq(distribution = qnorm,  dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), alpha = 0.5) +
+  stat_qq_line(distribution = qnorm, dparams = list(mean = fnorm$estimate["mean"], sd = fnorm$estimate["sd"]), color = "darkblue", linewidth = 1) +
+  labs(title = "Normal Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
 qq_lnorm <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq(distribution = qlnorm, dparams = list(meanlog = flnorm$estimate["meanlog"], sdlog = flnorm$estimate["sdlog"]), alpha = 0.5) +
@@ -794,7 +836,7 @@ qq_gamma <- ggplot(RRF_df, aes(sample = RRF)) +
   stat_qq_line(distribution = qgamma, dparams = list(shape = fgamma$estimate["shape"], rate = fgamma$estimate["rate"]), color = "darkgreen", linewidth = 1) +
   labs(title = "Gamma Q-Q", x = "Theoretical quantiles (RRF)", y = "Sample quantiles (RRF)") + theme_minimal(base_size = 13)
 
-(qq_lnorm + qq_gamma)
+(qq_norm + qq_lnorm + qq_gamma)
 ```
 
 ## Normal parameters
