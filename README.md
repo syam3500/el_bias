@@ -360,7 +360,6 @@ Three datasets (GC/MS, LC/MS positive-ion, LC/MS negative-ion) were extracted fr
 If you use this code, the cleaned datasets, or any of the figures, please cite the manuscript:
 Yam, S., Feliciano, R., & Jaspers, S. (2026). Quantification bias in non-targeted extractables and leachables screening: a Monte Carlo comparison of uncertainty-factor and response-factor corrections. Journal of Pharmaceutical and Biomedical Analysis, 117777. https://doi.org/10.1016/j.jpba.2026.117777
 
-```
 
 ## License
 
