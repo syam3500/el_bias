@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 title: "Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies"
-message: "If you use this software or the cleaned datasets, please cite the thesis below."
+message: "If you use this software or the cleaned datasets, please cite the article below. The thesis it derives from is listed under references."
 type: software
 authors:
   - family-names: Yam
@@ -15,6 +15,24 @@ keywords:
   - uncertainty factor
   - ISO 10993-18
   - quantification bias
+preferred-citation:
+  type: article
+  title: "Quantification bias in non-targeted extractables and leachables screening: a Monte Carlo comparison of uncertainty-factor and response-factor corrections"
+  authors:
+    - family-names: Yam
+      given-names: Sophie
+      orcid: "https://orcid.org/0009-0007-7557-0699"
+    - family-names: Feliciano
+      given-names: Rodrigo
+      orcid: "https://orcid.org/0000-0002-8116-997X"
+    - family-names: Jaspers
+      given-names: Stijn
+  journal: "Journal of Pharmaceutical and Biomedical Analysis"
+  number: "117777"
+  year: 2026
+  month: 10
+  issn: "0731-7085"
+  doi: "10.1016/j.jpba.2026.117777"
 references:
   - type: thesis
     title: "Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies"
