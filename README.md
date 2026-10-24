@@ -358,22 +358,8 @@ Three datasets (GC/MS, LC/MS positive-ion, LC/MS negative-ion) were extracted fr
 ## Citation
 
 If you use this code, the cleaned datasets, or any of the figures, please cite the manuscript:
+Yam, S., Feliciano, R., & Jaspers, S. (2026). Quantification bias in non-targeted extractables and leachables screening: a Monte Carlo comparison of uncertainty-factor and response-factor corrections. Journal of Pharmaceutical and Biomedical Analysis, 117777. https://doi.org/10.1016/j.jpba.2026.117777
 
-> Yam, S., Feliciano, R., & Jaspers, S. Quantification bias in non-targeted extractables and leachables screening: a Monte Carlo comparison of uncertainty-factor and response-factor corrections. *Journal of Pharmaceutical and Biomedical Analysis* (submitted).
-
-and/or the thesis it derives from:
-
-> Yam, S. (2026). *Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies* [Master's thesis, Hasselt University]. Faculty of Sciences, School for Information Technology.
-
-```bibtex
-@mastersthesis{yam2026elbias,
-  author  = {Yam, Sophie},
-  title   = {Statistical Evaluation of Quantification Bias in Extractables and Leachables Studies},
-  school  = {Hasselt University, Faculty of Sciences -- School for Information Technology},
-  year    = {2026},
-  type    = {Master's thesis, Master of Statistics and Data Science},
-  address = {Hasselt, Belgium}
-}
 ```
 
 ## License
